@@ -309,7 +309,7 @@ public class OfflinePlayerManager implements Listener {
 
     private void saveInventory(Player player) {
         OfflineInventory offlineInventory = new OfflineInventory(
-                player.getInventory().getContents(),
+                player.getInventory().getStorageContents(),
                 player.getInventory().getArmorContents(),
                 player.getInventory().getItemInOffHand(),
                 getPlayerHead(player)
@@ -340,7 +340,7 @@ public class OfflinePlayerManager implements Listener {
         ItemStack[] armor = ((List<?>) Objects.requireNonNull(config.getList("armor"))).toArray(new ItemStack[0]);
         ItemStack offhand = config.getItemStack("offhand", new ItemStack(Material.AIR));
 
-        player.getInventory().setContents(main);
+        player.getInventory().setStorageContents(main);
         player.getInventory().setArmorContents(armor);
         player.getInventory().setItemInOffHand(offhand);
     }

@@ -200,69 +200,98 @@ public class RecruitGuiManager {
     }
 
     private void startSlotMachineAnimation(Player player, Inventory gui, List<UUID> recruitable) {
+        if (playersInRecruitment.contains(player.getUniqueId())) return;
         playersInRecruitment.add(player.getUniqueId());
-        gui.clear(); // 룰렛 시작 전 GUI를 비움
+        gui.clear(); // "시작" 버튼 제거
 
+        // --- Animation Parameters ---
+        final int ROULETTE_START_SLOT = 9;
+        final int ROULETTE_SLOTS = 9;
+        final int CENTER_SLOT = 13;
+
+        // --- Animation Timing ---
+        final int TOTAL_DURATION_TICKS = 100; // 총 5초
+        final int FINAL_SLOWDOWN_TICKS = 40; // 마지막 2초는 최종 감속 및 결과 표시
+
+        // --- Pre-determine Winner ---
+        final UUID finalRecruitUUID = selectPlayerByWeightedRoulette(recruitable);
+        if (finalRecruitUUID == null) {
+            player.sendMessage(PREFIX + "§c모집할 플레이어를 선택하는 중 오류가 발생했습니다.");
+            playersInRecruitment.remove(player.getUniqueId());
+            player.closeInventory();
+            return;
+        }
+        final OfflinePlayer finalRecruit = Bukkit.getOfflinePlayer(finalRecruitUUID);
+
+        // --- Start Animation ---
         new BukkitRunnable() {
             private int ticks = 0;
-            private int interval = 2;
-            private final int stopTick = 80; // 4초
-            private final Random random = new Random();
+            private int interval = 2; // 초기 빠른 속도
 
             @Override
             public void run() {
-                ticks++;
-
-                if (ticks >= stopTick) {
+                // --- Stop Condition ---
+                if (ticks >= TOTAL_DURATION_TICKS) {
                     this.cancel();
-                    player.playSound(player.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 1.0f);
-
-                    // 최종 선택 (가중치 적용)
-                    UUID finalRecruitUUID = selectPlayerByWeightedRoulette(recruitable);
-                    if (finalRecruitUUID == null) {
-                        player.sendMessage(PREFIX + "§c오류: 최종 팀원을 선택하지 못했습니다.");
-                        playersInRecruitment.remove(player.getUniqueId());
-                        player.closeInventory();
-                        return;
-                    }
-
-                    OfflinePlayer finalRecruit = Bukkit.getOfflinePlayer(finalRecruitUUID);
-                    gui.setItem(13, createPlayerHead(finalRecruit, "§a§l" + finalRecruit.getName() + "!", "§e팀원으로 영입되었습니다!"));
-
-                    Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
-                    if (clan != null) {
-                        plugin.getClanManager().addMemberToClan(clan, finalRecruitUUID);
-                        player.sendMessage(PREFIX + "§a" + finalRecruit.getName() + "님을 새로운 가문원으로 영입했습니다!");
-                        if (finalRecruit.isOnline()) {
-                            finalRecruit.getPlayer().sendMessage(PREFIX + "§a" + clan.getColor() + clan.getName() + "§a 가문에 영입되었습니다!");
-                        }
-                    }
-
-                    playersInRecruitment.remove(player.getUniqueId());
-                    // 3초 후 GUI 닫기
-                    new BukkitRunnable() {
-                        @Override
-                        public void run() {
-                            if (player.getOpenInventory().getTitle().equals(RECRUIT_GUI_TITLE_ROULETTE)) {
-                                player.closeInventory();
-                            }
-                        }
-                    }.runTaskLater(plugin, 60L);
+                    finalizeRecruitment(player, gui, finalRecruit);
                     return;
                 }
 
-                // 시간이 지남에 따라 룰렛 속도 감소
-                if (ticks > 60) interval = 10;
-                else if (ticks > 40) interval = 5;
-                else if (ticks > 20) interval = 3;
+                // --- Adjust Speed (Multi-stage) ---
+                if (ticks > TOTAL_DURATION_TICKS - (FINAL_SLOWDOWN_TICKS / 2)) { // 마지막 1초
+                    interval = 8;
+                } else if (ticks > TOTAL_DURATION_TICKS - FINAL_SLOWDOWN_TICKS) { // 마지막 2초
+                    interval = 5;
+                } else if (ticks > 40) { // 2초 후
+                    interval = 3;
+                }
 
+                // --- Animate ---
                 if (ticks % interval == 0) {
-                    UUID randomUUID = recruitable.get(random.nextInt(recruitable.size()));
-                    gui.setItem(13, createPlayerHead(Bukkit.getOfflinePlayer(randomUUID), "§b???", "§7누가 선택될까요..."));
+                    // Shift items from right to left
+                    for (int i = ROULETTE_START_SLOT; i < ROULETTE_START_SLOT + ROULETTE_SLOTS - 1; i++) {
+                        gui.setItem(i, gui.getItem(i + 1));
+                    }
+
+                    // Add a new random head on the right
+                    UUID randomUUID = recruitable.get(new Random().nextInt(recruitable.size()));
+                    gui.setItem(ROULETTE_START_SLOT + ROULETTE_SLOTS - 1, createPlayerHead(Bukkit.getOfflinePlayer(randomUUID), "§b???", "§7..."));
+
+                    // Play sound
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.5f);
                 }
+                ticks++;
             }
         }.runTaskTimer(plugin, 0L, 1L);
+    }
+
+    private void finalizeRecruitment(Player player, Inventory gui, OfflinePlayer finalRecruit) {
+        // 최종 결과를 중앙에 표시
+        gui.setItem(13, createPlayerHead(finalRecruit, "§a§l" + finalRecruit.getName() + "!", "§e팀원으로 영입되었습니다!"));
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+        player.playSound(player.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 1.0f);
+
+        // 가문원 추가 로직
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        if (clan != null) {
+            plugin.getClanManager().addMemberToClan(clan, finalRecruit.getUniqueId());
+            player.sendMessage(PREFIX + "§a" + finalRecruit.getName() + "님을 새로운 가문원으로 영입했습니다!");
+            if (finalRecruit.isOnline()) {
+                finalRecruit.getPlayer().sendMessage(PREFIX + "§a" + clan.getColor() + clan.getName() + "§a 가문에 영입되었습니다!");
+            }
+        }
+
+        playersInRecruitment.remove(player.getUniqueId());
+
+        // 2초 후 GUI 닫기
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (player.getOpenInventory().getTitle().equals(RECRUIT_GUI_TITLE_ROULETTE)) {
+                    player.closeInventory();
+                }
+            }
+        }.runTaskLater(plugin, 40L);
     }
 
     private ItemStack createRecruitablePlayerHead(OfflinePlayer player, int cost) {

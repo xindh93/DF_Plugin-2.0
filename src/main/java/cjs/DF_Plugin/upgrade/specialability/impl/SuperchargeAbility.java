@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.upgrade.specialability.impl;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.player.offline.OfflinePlayerManager;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
@@ -57,6 +58,12 @@ public class SuperchargeAbility implements ISpecialAbility {
     public void onPlayerInteract(PlayerInteractEvent event, Player player, ItemStack item) {
         // 활을 당기기 시작할 때(우클릭)만 발동하도록 제한합니다.
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        // 10강 이상일 때만 특수능력이 발동하도록 레벨을 확인합니다.
+        int level = DF_Main.getInstance().getUpgradeManager().getUpgradeLevel(item);
+        if (level < UpgradeManager.MAX_UPGRADE_LEVEL) {
             return;
         }
 

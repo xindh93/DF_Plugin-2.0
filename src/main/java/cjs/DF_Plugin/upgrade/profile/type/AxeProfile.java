@@ -5,7 +5,7 @@ import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
-import cjs.DF_Plugin.upgrade.specialability.impl.ParricideAbility;
+import cjs.DF_Plugin.upgrade.specialability.impl.CleansingAbility;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
@@ -21,7 +21,7 @@ import java.util.UUID;
 
 public class AxeProfile implements IUpgradeableProfile {
 
-    private static final ISpecialAbility PARRICIDE_ABILITY = new ParricideAbility();
+    private static final ISpecialAbility CLEANSING_ABILITY = new CleansingAbility();
 
     @Override
     public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
@@ -32,16 +32,7 @@ public class AxeProfile implements IUpgradeableProfile {
         // 2. 아이템의 기본 공격 속성을 다시 적용합니다.
         applyBaseAttackAttributes(item.getType(), meta);
 
-        // 3. 강화 레벨에 따른 추가 공격력을 적용합니다.
-        double damagePerLevel = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.attribute-bonuses.axe.damage-per-level", 0.5);
-        double bonusDamage = level * damagePerLevel;
-
-        if (bonusDamage > 0) {
-            AttributeModifier damageMod = new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "upgrade_damage"), bonusDamage, AttributeModifier.Operation.ADD_NUMBER);
-            meta.addAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE, damageMod);
-        }
-
-        // 4. 기존 인챈트 로직을 적용합니다.
+        // 3. 기존 인챈트 로직을 적용합니다.
         Map<Enchantment, Double> enchantBonuses = new LinkedHashMap<>();
         enchantBonuses.put(Enchantment.EFFICIENCY, 0.5);
         enchantBonuses.put(Enchantment.UNBREAKING, 0.5);
@@ -67,6 +58,6 @@ public class AxeProfile implements IUpgradeableProfile {
 
     @Override
     public Optional<ISpecialAbility> getSpecialAbility() {
-        return Optional.of(PARRICIDE_ABILITY);
+        return Optional.of(CLEANSING_ABILITY);
     }
 }

@@ -160,7 +160,7 @@ public class PylonShopManager {
         if (player.getLevel() >= requiredLevels) {
             player.setLevel(player.getLevel() - requiredLevels);
             InventoryUtils.giveOrDropItems(player, reward);
-            player.playSound(player.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 1.2f);
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.5f);
         } else {
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
         }

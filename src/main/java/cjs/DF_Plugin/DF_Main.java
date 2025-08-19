@@ -7,7 +7,7 @@ import cjs.DF_Plugin.clan.nether.ClanNetherListener;
 import cjs.DF_Plugin.command.DFCommand;
 import cjs.DF_Plugin.command.ItemNameCommand;
 import cjs.DF_Plugin.command.DFTabCompleter;
-import cjs.DF_Plugin.command.PylonStorageCommand;
+import cjs.DF_Plugin.command.StorageCommand;
 import cjs.DF_Plugin.enchant.EnchantManager;
 import cjs.DF_Plugin.enchant.EnchantmentRuleListener;
 import cjs.DF_Plugin.events.game.GameStartManager;
@@ -28,6 +28,7 @@ import cjs.DF_Plugin.player.stats.StatsManager;
 import cjs.DF_Plugin.pylon.PylonManager;
 import cjs.DF_Plugin.pylon.beaconinteraction.*;
 import cjs.DF_Plugin.pylon.item.ReturnScrollListener;
+import cjs.DF_Plugin.pylon.beacongui.giftbox.GiftBoxGuiManager;
 import cjs.DF_Plugin.pylon.beacongui.recon.ReconManager;
 import cjs.DF_Plugin.pylon.beacongui.giftbox.GiftBoxRefillTask;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIListener;
@@ -74,6 +75,7 @@ public final class DF_Main extends JavaPlugin {
     private StatsManager statsManager;
     private PlayerEvalGuiManager playerEvalGuiManager;
     private OfflinePlayerManager offlinePlayerManager;
+    private GiftBoxGuiManager giftBoxGuiManager;
 
     // --- Event Managers ---
     private EndEventManager endEventManager;
@@ -127,6 +129,7 @@ public final class DF_Main extends JavaPlugin {
         statsManager = new StatsManager(this);
         playerEvalGuiManager = new PlayerEvalGuiManager(this);
         offlinePlayerManager = new OfflinePlayerManager(this);
+        giftBoxGuiManager = new GiftBoxGuiManager(this);
 
         // --- Feature Managers (can depend on core managers) ---
         clanManager = new ClanManager(this);
@@ -157,7 +160,7 @@ public final class DF_Main extends JavaPlugin {
         getCommand("df").setExecutor(dfCommand);
         getCommand("df").setTabCompleter(new DFTabCompleter(this));
         getCommand("itemname").setExecutor(new ItemNameCommand(this));
-        getCommand("pylonstorage").setExecutor(new PylonStorageCommand(this));
+        getCommand("storage").setExecutor(new StorageCommand(this));
     }
 
     /**
@@ -200,6 +203,7 @@ public final class DF_Main extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new PylonProtectionListener(this), this);
             getServer().getPluginManager().registerEvents(new ReturnScrollListener(this.pylonManager.getScrollManager()), this);
             getServer().getPluginManager().registerEvents(new ClanNetherListener(this), this);
+            getServer().getPluginManager().registerEvents(this.giftBoxGuiManager, this);
         }
 
         if (gameConfigManager.isEventSystemEnabled()) {
@@ -243,6 +247,15 @@ public final class DF_Main extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("Disabling DarkForest 2.0...");
+
+        // 서버 종료 시 온라인 상태인 모든 플레이어의 특수능력 상태를 정리합니다.
+        // 이는 onCleanup을 호출하여 액션바, 공전 삼지창 등을 올바르게 제거하고,
+        // 이 상태가 파일에 저장되어 재접속 시 원치 않는 효과가 나타나는 문제를 방지합니다.
+        if (specialAbilityManager != null) {
+            // 이 메서드는 SpecialAbilityManager 내에서 현재 활성화된 능력을 가진 모든 플레이어에 대해
+            // onCleanup을 호출하도록 구현해야 합니다.
+            specialAbilityManager.cleanupAllActiveAbilities();
+        }
 
         cjs.DF_Plugin.upgrade.specialability.impl.LightningSpearAbility.cleanupAllLingeringTridents();
         // 모든 플레이어 및 가문 관련 데이터를 안전하게 저장합니다.

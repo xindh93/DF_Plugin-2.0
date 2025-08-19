@@ -55,15 +55,46 @@ public class TridentPassiveListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
-    public void onDamageByTrident(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Trident trident) || !(event.getEntity() instanceof LivingEntity victim)) {
+    @EventHandler
+    public void onPlayerRiptide(PlayerRiptideEvent event) {
+        Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+
+        if (item == null || item.getType() != org.bukkit.Material.TRIDENT) {
             return;
         }
 
+        int level = plugin.getUpgradeManager().getUpgradeLevel(item);
+        if (level > 0) {
+            // The player's velocity is set by the riptide effect. We use that as the base direction.
+            launchAdditionalTridents(player, level, player.getLocation(), player.getVelocity());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onDamageByTrident(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Trident trident)) {
+            return;
+        }
+
+        // 추가 삼지창인지 확인 (메타데이터 사용)
         if (!trident.hasMetadata(TRIDENT_PASSIVE_LEVEL_KEY)) {
             return;
         }
+
+        // 1. 시전자 자신에게 피해를 주지 않도록 설정
+        if (trident.getShooter() != null && trident.getShooter().equals(event.getEntity())) {
+            event.setCancelled(true);
+            return;
+        }
+
+        // 2. 다른 추가 삼지창에게 피해를 주지 않도록 설정
+        if (event.getEntity() instanceof Trident && event.getEntity().hasMetadata(TRIDENT_PASSIVE_LEVEL_KEY)) {
+            event.setCancelled(true);
+            return;
+        }
+
+        if (!(event.getEntity() instanceof LivingEntity victim)) return;
 
         int level = trident.getMetadata(TRIDENT_PASSIVE_LEVEL_KEY).get(0).asInt();
         if (level <= 0) return;
@@ -133,6 +164,12 @@ public class TridentPassiveListener implements Listener {
                     return;
                 }
 
+                // 물 속에 있을 때 속도 저하를 상쇄하여 물을 통과하는 것처럼 보이게 합니다.
+                // 이 값은 실험적으로 조정될 수 있습니다.
+                if (trident.isInWater()) {
+                    trident.setVelocity(trident.getVelocity().multiply(1.035));
+                }
+
                 // 삼지창이 땅에 박혔는지 확인합니다.
                 if (trident.isOnGround()) {
                     // 땅에 박힌 후 잠시 후(예: 0.1초)에 사라지게 하여 시각적으로 자연스럽게 만듭니다.
@@ -141,6 +178,6 @@ public class TridentPassiveListener implements Listener {
                     this.cancel();
                 }
             }
-        }.runTaskTimer(DF_Main.getInstance(), 2L, 1L); // 2틱 후부터 매 틱마다 확인
+        }.runTaskTimer(DF_Main.getInstance(), 1L, 1L); // 1틱 후부터 매 틱마다 확인하여 즉각적인 반응
     }
 }

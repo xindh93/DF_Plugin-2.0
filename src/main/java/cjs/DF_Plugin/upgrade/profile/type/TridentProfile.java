@@ -47,6 +47,7 @@ public class TridentProfile implements IUpgradeableProfile {
                 meta.addEnchant(Enchantment.RIPTIDE, 3, true);
             } else if (mode.equals("lightning_spear")) {
                 meta.addEnchant(Enchantment.LOYALTY, 3, true);
+                meta.addEnchant(Enchantment.CHANNELING, 1, true);
             }
 
             // 10강 이상일 때만 능력 설명 로어 추가

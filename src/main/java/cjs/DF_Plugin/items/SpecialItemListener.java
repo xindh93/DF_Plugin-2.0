@@ -112,8 +112,13 @@ public class SpecialItemListener implements Listener {
 
         new BukkitRunnable() {
             private final Vector direction = end.toVector().subtract(start.toVector()).normalize();
+            // 나선형 효과를 위한 수직 벡터 계산
+            private final Vector perpendicular = new Vector(direction.getZ(), 0, -direction.getX()).normalize();
+            private final Vector up = direction.clone().crossProduct(perpendicular).normalize();
+
             private double distance = 0;
-            private final double maxDistance = 10.0; // 최대 10블록까지만 파티클 표시
+            private final double maxDistance = 30.0; // 파티클 표시 거리 확장
+            private double angle = 0; // 나선형 각도
 
             @Override
             public void run() {
@@ -121,10 +126,18 @@ public class SpecialItemListener implements Listener {
                     this.cancel();
                     return;
                 }
-                Location particleLoc = start.clone().add(direction.clone().multiply(distance));
-                // 파티클 개수 5배, 지름 1블록(반경 0.5) 범위로 변경
-                world.spawnParticle(Particle.WITCH, particleLoc, 5, 0.5, 0.5, 0.5, 0);
-                distance += 0.5;
+
+                // 중심 경로 파티클 (SOUL_FIRE_FLAME)
+                Location centerTrail = start.clone().add(direction.clone().multiply(distance));
+                world.spawnParticle(Particle.SOUL_FIRE_FLAME, centerTrail, 1, 0, 0, 0, 0);
+
+                // 나선형 경로 파티클 (END_ROD)
+                double radius = 1.2; // 나선 반경
+                Vector offset = perpendicular.clone().multiply(radius * Math.cos(angle)).add(up.clone().multiply(radius * Math.sin(angle)));
+                world.spawnParticle(Particle.END_ROD, centerTrail.clone().add(offset), 1, 0, 0, 0, 0);
+
+                distance += 0.4; // 파티클 밀도 증가
+                angle += Math.PI / 4; // 회전 속도 증가
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }

@@ -6,25 +6,46 @@ import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityManager;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.type.BubbleColumn;
+import org.bukkit.block.Biome;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.Sound;
+import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Trident;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class BackflowAbility implements ISpecialAbility {
+
+    private static final List<Material> EFFECT_BLOCKS = Arrays.asList(
+            Material.ICE,
+            Material.PACKED_ICE,
+            Material.BLUE_ICE,
+            Material.BLUE_STAINED_GLASS,
+            Material.LIGHT_BLUE_STAINED_GLASS,
+            Material.CYAN_STAINED_GLASS,
+            Material.SNOW_BLOCK,
+            Material.QUARTZ_BLOCK
+    );
 
     @Override
     public String getInternalName() {
@@ -43,7 +64,7 @@ public class BackflowAbility implements ISpecialAbility {
 
     @Override
     public double getCooldown() {
-        return DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.cooldown", 90.0);
+        return DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.cooldown", 180.0);
     }
 
     @Override
@@ -54,7 +75,7 @@ public class BackflowAbility implements ISpecialAbility {
         }
 
         // 능력 발동 위치를 플레이어가 바라보는 30미터 내의 블록으로 설정합니다.
-        RayTraceResult rayTraceResult = player.rayTraceBlocks(30);
+        RayTraceResult rayTraceResult = player.rayTraceBlocks(60);
         if (rayTraceResult == null || rayTraceResult.getHitBlock() == null) {
             // 사정거리 내에 대상 블록이 없으면 발동하지 않습니다.
             return;
@@ -75,33 +96,17 @@ public class BackflowAbility implements ISpecialAbility {
         performBackflow(player, center);
     }
 
+    private BlockData getRandomBlockData() {
+        return EFFECT_BLOCKS.get(ThreadLocalRandom.current().nextInt(EFFECT_BLOCKS.size())).createBlockData();
+    }
+
     private void performBackflow(Player player, Location center) {
-        double castDuration = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.cast-duration-seconds", 1.5);
-        double effectDuration = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.effect-duration-seconds", 4.0);
-        double radius = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.radius", 16.0);
+        final double preEffectDurationSeconds = 3.0; // 삼지창 투하 후 메인 이펙트까지의 시간
+        double effectDuration = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.effect-duration-seconds", 3.0);
+        double radius = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.radius", 8.0);
         double damagePerTick = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.damage-per-tick", 5.0);
-        double pullStrength = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.pull-strength", 15.0);
+        double pullStrength = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.pull-strength", 2.5);
         double initialDamage = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.backflow.details.initial-damage", 30.0);
-
-        // --- Ambient Rain Sound ---
-        final double totalSoundDuration = castDuration + effectDuration + 2.0; // 2 extra seconds for fade out
-        new BukkitRunnable() {
-            double elapsedTicks = 0;
-            @Override
-            public void run() {
-                if (elapsedTicks >= totalSoundDuration * 20) {
-                    this.cancel();
-                    return;
-                }
-
-                for (Player p : center.getWorld().getPlayers()) {
-                    if (p.getLocation().distanceSquared(center) < 100 * 100) {
-                        p.playSound(p.getLocation(), Sound.WEATHER_RAIN, 3.0f, 1.0f);
-                    }
-                }
-                elapsedTicks += 4; // Check every 4 ticks
-            }
-        }.runTaskTimer(DF_Main.getInstance(), 0L, 4L);
 
         // --- 이벤트 순서 재정의 ---
 
@@ -122,10 +127,10 @@ public class BackflowAbility implements ISpecialAbility {
             }
         }.runTaskLater(DF_Main.getInstance(), 10L);
 
-        // 3. 땅에서 물이 새어 나옴 (0.6초 ~ 1.5초)
+        // 3. 땅에서 물이 새어 나옴 (0.6초 ~ 3.0초)
         new BukkitRunnable() {
             private int ticksRun = 0;
-            private final int DURATION_TICKS = (int) (castDuration * 20) - 12; // 30 - 12 = 18 ticks
+            private final int DURATION_TICKS = (int) (preEffectDurationSeconds * 20) - 12; // 60 - 12 = 48 ticks
 
             @Override
             public void run() {
@@ -133,7 +138,7 @@ public class BackflowAbility implements ISpecialAbility {
                     this.cancel();
                     return;
                 }
-                for (int i = 0; i < (int) (radius * 15); i++) {
+                for (int i = 0; i < (int) (radius * 5); i++) { // 파티클 생성량을 줄여 랙 완화
                     double r = Math.random() * radius;
                     double angle = Math.random() * 2 * Math.PI;
                     double x = center.getX() + r * Math.cos(angle);
@@ -144,240 +149,435 @@ public class BackflowAbility implements ISpecialAbility {
             }
         }.runTaskTimer(DF_Main.getInstance(), 12L, 1L);
 
-        // 4 & 5. 소리 감소 및 물기둥 생성 (1.5초 후)
+        // 어둠 효과 (물기둥 생성 2초 전부터 3초간)
         new BukkitRunnable() {
             @Override
             public void run() {
-                final int MUTE_DURATION_TICKS = 40; // 2초
                 final double MUTE_RADIUS = 100.0;
+                final int DURATION_TICKS = 3 * 20; // 3초
                 for (Player p : center.getWorld().getPlayers()) {
                     if (p.getLocation().distanceSquared(center) < MUTE_RADIUS * MUTE_RADIUS) {
-                        p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, MUTE_DURATION_TICKS, 0, false, false, false));
+                        p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, DURATION_TICKS, 0, false, false, false));
                     }
                 }
+            }
+        }.runTaskLater(DF_Main.getInstance(), (long) (preEffectDurationSeconds * 20) - 40L); // 60 - 40 = 20 ticks (1초 후)
+
+        // 4 & 5. 물기둥 생성 (3.0초 후)
+        new BukkitRunnable() {
+            @Override
+            public void run() {
                 if (fallingTrident.isValid()) fallingTrident.remove();
                 startMainEffect(player, center, effectDuration, radius, damagePerTick, pullStrength, initialDamage);
             }
-        }.runTaskLater(DF_Main.getInstance(), (long) (castDuration * 20));
+        }.runTaskLater(DF_Main.getInstance(), (long) (preEffectDurationSeconds * 20));
     }
 
     private void startMainEffect(Player player, Location center, double duration, double radius, double damage, double pullStrength, double initialDamage) {
+        // --- Ambient Rain Sound ---
+        final double totalSoundDuration = duration + 2.5; // 2.5 extra seconds for fade out
+        new BukkitRunnable() {
+            double elapsedTicks = 0;
+            @Override
+            public void run() {
+                if (elapsedTicks >= totalSoundDuration * 20) {
+                    this.cancel();
+                    return;
+                }
+
+                for (Player p : center.getWorld().getPlayers()) {
+                    if (p.getLocation().distanceSquared(center) < 100 * 100) {
+                        p.playSound(p.getLocation(), Sound.WEATHER_RAIN, 3.0f, 1.0f);
+                    }
+                }
+                elapsedTicks += 4; // Check every 4 ticks
+            }
+        }.runTaskTimer(DF_Main.getInstance(), 0L, 4L);
+
         // 스피커가 터지는 듯한 강력한 시작음
-        center.getWorld().playSound(center, Sound.ENTITY_WARDEN_SONIC_BOOM, 2.0f, 1.0f);
         center.getWorld().playSound(center, Sound.BLOCK_WATER_AMBIENT, 2.0f, 0.5f);
+
+        // 워든 음파 파동 소리를 여러 피치로 동시에 재생하여 웅장한 화음 효과를 냅니다.
+        final double soundRadiusSquared = 100 * 100;
+        for (Player p : center.getWorld().getPlayers()) {
+            if (p.getLocation().distanceSquared(center) < soundRadiusSquared) {
+                p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM, 2.0f, 0.5f);
+                p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM, 2.0f, 0.55f);
+                p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM, 2.0f, 0.6f);
+            }
+        }
+
+        // --- Biome Change ---
+        final Map<Location, Biome> originalBiomes = new java.util.HashMap<>();
+        final World world = center.getWorld();
+        final int centerX = center.getBlockX();
+        final int centerZ = center.getBlockZ();
+        final int radiusInt = (int) Math.ceil(radius);
+
+        final int upwardHeight = 200;
+        final int downwardHeight = 50;
+
+        for (int x = centerX - radiusInt; x <= centerX + radiusInt; x++) {
+            for (int z = centerZ - radiusInt; z <= centerZ + radiusInt; z++) {
+                if (center.distanceSquared(new Location(world, x, center.getY(), z)) <= radius * radius) {
+                    Location columnLoc = new Location(world, x, 0, z); // Key for the map
+                    originalBiomes.put(columnLoc, world.getBiome(x, 0, z));
+                    world.setBiome(x, 0, z, Biome.OCEAN);
+                }
+            }
+        }
+
+        // --- Block Data Backup in Chunks ---
+        // To ensure reliable progressive restoration, we save the original blocks in chunks
+        // that correspond to the layers that will be restored together.
+        final List<Map<Location, BlockData>> originalBlockChunks = new ArrayList<>();
+        final int backupRadius = radiusInt + 8;
+        final double backupRadiusSq = backupRadius * backupRadius;
+        final int CHUNK_HEIGHT = 10; // Must match LAYERS_PER_TICK in startDestructionAnimation
+
+        // Iterate from bottom to top, creating a map for each chunk.
+        for (int y_base = -downwardHeight - 1; y_base <= upwardHeight; y_base += CHUNK_HEIGHT) {
+            Map<Location, BlockData> chunkMap = new java.util.HashMap<>();
+            for (int y_offset = 0; y_offset < CHUNK_HEIGHT; y_offset++) {
+                int currentYOffset = y_base + y_offset;
+                if (currentYOffset > upwardHeight) break;
+
+                for (int x = -backupRadius; x <= backupRadius; x++) {
+                    for (int z = -backupRadius; z <= backupRadius; z++) {
+                        if (x * x + z * z <= backupRadiusSq) {
+                            Location loc = center.clone().add(x, currentYOffset, z);
+                            chunkMap.put(loc.clone(), loc.getBlock().getBlockData());
+                        }
+                    }
+                }
+            }
+            if (!chunkMap.isEmpty()) {
+                originalBlockChunks.add(chunkMap);
+            }
+        }
+
 
         final double radiusSquared = radius * radius;
         final List<Location> waterBlocks = new ArrayList<>();
+        final Map<BlockDisplay, Double> risingBars = new java.util.HashMap<>();
 
         // --- Main Effect Task (Creation, Animation, Game Logic) ---
         new BukkitRunnable() {
             int tickCounter = 0;
             int yOffset = 0;
-            final int upwardHeight = 200;
-            final int downwardHeight = 50;
             final int maxHeight = Math.max(upwardHeight, downwardHeight);
             final int layersPerTick = 5; // 물기둥이 더 빠르게 올라가도록 수정
 
-            // Animation parameters
-            final double screwRadius = 9.0;
-            final int totalAnglePoints = 72;
-            final int emptyLanes = 8;
-            final double anglePerPoint = (2.0 * Math.PI) / totalAnglePoints;
-            final int holeWidthInPoints = 5; // The width of the empty part of the wave
-
             @Override
             public void run() {
-                // --- Stop condition ---
-                if (tickCounter >= duration * 20) {
-                    this.cancel();
-                    // --- Destruction Animation ---
-                    startDestructionAnimation(waterBlocks, center, upwardHeight, downwardHeight, screwRadius);
-                    return;
+                // --- Animation logic (runs every tick) ---
+                // 1. Rising Bars Animation
+                for (Iterator<Map.Entry<BlockDisplay, Double>> iterator = risingBars.entrySet().iterator(); iterator.hasNext(); ) {
+                    Map.Entry<BlockDisplay, Double> entry = iterator.next();
+                    BlockDisplay bar = entry.getKey();
+                    double speed = entry.getValue();
+
+                    if (!bar.isValid()) {
+                        iterator.remove();
+                        continue;
+                    }
+                    Location newLoc = bar.getLocation().add(0, speed, 0);
+                    if (newLoc.getY() > center.getY() + upwardHeight) {
+                        bar.remove();
+                        iterator.remove();
+                    } else {
+                        bar.teleport(newLoc);
+                    }
                 }
 
-                // --- Creation logic (runs until pillar is built) ---
-                if (yOffset < maxHeight) {
-                    for (int i = 0; i < layersPerTick; i++) {
-                        if (yOffset >= maxHeight) break;
+                // --- Spawning and Game Logic (runs only during effect duration) ---
+                if (tickCounter < duration * 20) {
+                    // --- Creation logic (runs until pillar is built) ---
+                    if (yOffset < maxHeight) {
+                        for (int i = 0; i < layersPerTick; i++) {
+                            if (yOffset >= maxHeight) break;
 
-                        // Create water layer at yOffset
-                        for (double xOffset = -radius; xOffset <= radius; xOffset++) {
-                            for (double zOffset = -radius; zOffset <= radius; zOffset++) {
-                                if (xOffset * xOffset + zOffset * zOffset <= radiusSquared) {
-                                    // Upward
+                            // Create water layer at yOffset
+                            for (double xOffset = -radius; xOffset <= radius; xOffset++) {
+                                for (double zOffset = -radius; zOffset <= radius; zOffset++) {
+                                    if (xOffset * xOffset + zOffset * zOffset > radiusSquared) continue;
+
+                                    // 위쪽 물기둥은 이제 패턴 없이 꽉 채워서 생성합니다.
                                     if (yOffset < upwardHeight) {
                                         Location blockLoc = center.clone().add(xOffset, yOffset, zOffset);
                                         Block block = blockLoc.getBlock();
-                                        if (block.isPassable()) {
-                                            block.setType(Material.BUBBLE_COLUMN, false);
-                                            ((BubbleColumn) block.getBlockData()).setDrag(false);
-                                            waterBlocks.add(blockLoc.clone());
-                                        }
+                                        BlockData bubbleData = Material.BUBBLE_COLUMN.createBlockData();
+                                        ((BubbleColumn) bubbleData).setDrag(false); // 위로 올라가는 거품 생성
+                                        block.setBlockData(bubbleData, false);
+                                        waterBlocks.add(blockLoc.clone());
                                     }
-                                    // Downward
+                                    // 아래쪽 물기둥은 패턴 없이 꽉 채워서 생성합니다.
                                     if (yOffset > 0 && yOffset <= downwardHeight) {
                                         Location blockLoc = center.clone().add(xOffset, -yOffset, zOffset);
                                         Block block = blockLoc.getBlock();
-                                        if (block.isPassable()) {
-                                            block.setType(Material.BUBBLE_COLUMN, false);
-                                            ((BubbleColumn) block.getBlockData()).setDrag(false);
-                                            waterBlocks.add(blockLoc.clone());
+                                        BlockData bubbleData = Material.BUBBLE_COLUMN.createBlockData();
+                                        ((BubbleColumn) bubbleData).setDrag(false); // 위로 올라가는 거품 생성
+                                        block.setBlockData(bubbleData, false);
+                                        waterBlocks.add(blockLoc.clone());
+                                    }
+                                }
+                            }
+
+                            // 물기둥 주변에 공기 벽을 생성하여 물이 퍼지는 것을 방지합니다.
+                            final int airWallRadius = radiusInt + 1;
+                            for (int xOffset = -airWallRadius; xOffset <= airWallRadius; xOffset++) {
+                                for (int zOffset = -airWallRadius; zOffset <= airWallRadius; zOffset++) {
+                                    double distSq = xOffset * xOffset + zOffset * zOffset;
+                                    // 물기둥 바로 바깥쪽 1칸 쉘에만 작용하도록 합니다.
+                                    if (distSq > radiusSquared && distSq <= Math.pow(airWallRadius, 2)) {
+                                        // Upward
+                                        if (yOffset < upwardHeight) {
+                                            Location blockLoc = center.clone().add(xOffset, yOffset, zOffset);
+                                            if (blockLoc.getBlock().getType() != Material.AIR) {
+                                                blockLoc.getBlock().setType(Material.AIR, false);
+                                            }
+                                        }
+                                        // Downward
+                                        if (yOffset > 0 && yOffset <= downwardHeight) {
+                                            Location blockLoc = center.clone().add(xOffset, -yOffset, zOffset);
+                                            if (blockLoc.getBlock().getType() != Material.AIR) {
+                                                blockLoc.getBlock().setType(Material.AIR, false);
+                                            }
                                         }
                                     }
                                 }
                             }
+
+                            // 51번째 블록(y=-51)에 공기층을 배치하여 물이 아래로 흐르는 것을 방지합니다.
+                            if (yOffset == downwardHeight) {
+                                int airLayerY = -downwardHeight - 1;
+                                for (double xOffsetLayer = -radius; xOffsetLayer <= radius; xOffsetLayer++) {
+                                    for (double zOffsetLayer = -radius; zOffsetLayer <= radius; zOffsetLayer++) {
+                                        if (xOffsetLayer * xOffsetLayer + zOffsetLayer * zOffsetLayer <= radiusSquared) {
+                                            Location airLoc = center.clone().add(xOffsetLayer, airLayerY, zOffsetLayer);
+                                            airLoc.getBlock().setType(Material.AIR, false);
+                                        }
+                                    }
+                                }
+                            }
+                            yOffset++;
                         }
-                        yOffset++;
                     }
-                }
 
-                // --- Animation logic (runs every tick) ---
-                // Animate all layers that have been created so far.
-                for (int y = -downwardHeight; y < yOffset; y++) {
-                    if (y >= upwardHeight) break;
-                    if (y < 0 && yOffset < -y) continue;
+                    // Spawn new outer pillars
+                    for (int i = 0; i < 1; i++) { // 생성량을 줄여 랙 완화
+                        double radius = 9.0 + Math.random(); // 9 to 10
+                        double angle = Math.random() * 2 * Math.PI;
+                        Location pillarBaseLoc = center.clone().add(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+                        double pillarSpeed = 2.0 + Math.random() * 1.5; // 외부 기둥 속도: 2.0 ~ 3.5
+                        int pillarHeight = 5 + ThreadLocalRandom.current().nextInt(6); // 5-10칸 길이
 
-                    redrawSnowLayer(y);
-                }
+                        for (int y = 0; y < pillarHeight; y++) {
+                            Location blockLoc = pillarBaseLoc.clone().add(0, y, 0);
+                            BlockDisplay newBar = center.getWorld().spawn(blockLoc, BlockDisplay.class, (bar) -> {
+                                bar.setBlock(getRandomBlockData());
+                                bar.setInterpolationDelay(-1);
+                                bar.setInterpolationDuration(3);
+                                bar.setTeleportDuration(3);
+                            });
+                            risingBars.put(newBar, pillarSpeed);
+                        }
+                    }
 
-                // --- Game Logic (every 4 ticks) ---
-                if (tickCounter % 4 == 0) {
-                    // 첫 틱에만 초기 폭발 데미지를 줍니다.
-                    if (tickCounter == 0) {
+                    // Spawn new inner pillars
+                    for (int i = 0; i < 2; i++) { // 생성량을 줄여 랙 완화
+                        double radius = Math.random() * 8.0; // 0 to 8
+                        double angle = Math.random() * 2 * Math.PI;
+                        Location pillarBaseLoc = center.clone().add(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+                        double pillarSpeed = 3.0 + Math.random() * 2.0; // 내부 기둥 속도: 3.0 ~ 5.0
+                        int pillarHeight = 5 + ThreadLocalRandom.current().nextInt(6); // 5-10칸 길이
+
+                        for (int y = 0; y < pillarHeight; y++) {
+                            Location blockLoc = pillarBaseLoc.clone().add(0, y, 0);
+                            BlockDisplay newBar = center.getWorld().spawn(blockLoc, BlockDisplay.class, (bar) -> {
+                                bar.setBlock(getRandomBlockData());
+                                bar.setInterpolationDelay(-1);
+                                bar.setInterpolationDuration(3);
+                                bar.setTeleportDuration(3);
+                            });
+                            risingBars.put(newBar, pillarSpeed);
+                        }
+                    }
+
+                    // 2. Splash Animation
+                    for (int i = 0; i < 5; i++) { // 생성량을 줄여 랙 완화
+                        createSplashParticle(center, 11.0, yOffset);
+                    }
+                    for (int i = 0; i < 2; i++) { // 생성량을 줄여 랙 완화
+                        createSplashParticle(center, 12.0, yOffset);
+                    }
+
+                    // --- Game Logic (every 4 ticks) ---
+                    if (tickCounter % 4 == 0) {
+                        // 첫 틱에만 초기 폭발 데미지를 줍니다.
+                        if (tickCounter == 0) {
+                            for (Entity entity : center.getWorld().getNearbyEntities(center.clone().add(0, 100, 0), radius, 100, radius)) {
+                                if (entity instanceof LivingEntity && !entity.getUniqueId().equals(player.getUniqueId())) {
+                                    ((LivingEntity) entity).damage(initialDamage, player);
+                                    entity.getWorld().spawnParticle(Particle.FLASH, entity.getLocation().add(0, 1, 0), 1);
+                                }
+                            }
+                        }
+
+                        // 지속적으로 재생되던 아이템 타는 소리를 제거하여,
+                        // 시작 시의 워든 음파 파동 소리에 집중하도록 합니다.
+                        
+                        // 주변 엔티티에 효과 적용 (범위를 물기둥 높이에 맞춤)
                         for (Entity entity : center.getWorld().getNearbyEntities(center.clone().add(0, 100, 0), radius, 100, radius)) {
                             if (entity instanceof LivingEntity && !entity.getUniqueId().equals(player.getUniqueId())) {
-                                ((LivingEntity) entity).damage(initialDamage, player);
-                                entity.getWorld().spawnParticle(Particle.FLASH, entity.getLocation().add(0, 1, 0), 1);
+                                final LivingEntity target = (LivingEntity) entity;
+
+                                // 데미지 적용
+                                target.damage(damage, player);
+
+                                // 강제적인 끌어당김 효과를 제거하여, 버블 기둥의 자연스러운 상승 효과만 남도록 합니다.
+                                // 이로써 "아래로 끌어당긴다"고 느껴지던 문제를 해결합니다.
+    //                            new BukkitRunnable() {
+    //                                @Override
+    //                                public void run() {
+    //                                    if (target.isValid() && !target.isDead()) {
+    //                                        Vector velocity = target.getVelocity();
+    //                                        velocity.setY(pullStrength);
+    //                                        target.setVelocity(velocity);
+    //                                    }
+    //                                }
+    //                            }.runTaskLater(DF_Main.getInstance(), 1L);
                             }
                         }
                     }
-
-                    // 반경 100블럭 내의 모든 플레이어에게 소리를 들려줍니다.
-                    for (Player p : center.getWorld().getPlayers()) {
-                        if (p.getLocation().distanceSquared(center) < 100 * 100) {
-                            // 빗소리는 별도 타이머가 관리합니다.
-                            // 스피커가 터지는 듯한 지속음을 추가합니다.
-                            p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_AMBIENT, 2.0f, 1.0f);
-                        }
-                    }
-
-                    // 주변 엔티티에 효과 적용 (범위를 물기둥 높이에 맞춤)
-                    for (Entity entity : center.getWorld().getNearbyEntities(center.clone().add(0, 100, 0), radius, 100, radius)) {
-                        if (entity instanceof LivingEntity && !entity.getUniqueId().equals(player.getUniqueId())) {
-                            final LivingEntity target = (LivingEntity) entity;
-
-                            // 데미지 적용
-                            target.damage(damage, player);
-
-                            // 1틱 늦게 속도를 설정하여 버블 컬럼의 자체 상승 효과에 덮어씌워지는 것을 방지하고 우선순위를 확보합니다.
-                            new BukkitRunnable() {
-                                @Override
-                                public void run() {
-                                    if (target.isValid() && !target.isDead()) {
-                                        Vector velocity = target.getVelocity();
-                                        velocity.setY(pullStrength);
-                                        target.setVelocity(velocity);
-                                    }
-                                }
-                            }.runTaskLater(DF_Main.getInstance(), 1L);
-                        }
-                    }
                 }
+
+                // --- Start Destruction when duration is over ---
+                if (tickCounter == duration * 20) {
+                    startDestructionAnimation(waterBlocks, center, upwardHeight, downwardHeight, originalBiomes, risingBars, originalBlockChunks);
+                    this.cancel();
+                    return;
+                }
+
+                // --- Stop condition ---
                 tickCounter++;
             }
 
-            /**
-             * Redraws a single horizontal layer of the snow screw based on its y-level and the current time.
-             * @param y The y-offset from the center.
-             */
-            private void redrawSnowLayer(int y) {
-                // The rotation for this layer depends on its layer group and the current time
-                int layerGroup = y / layersPerTick;
-                int rotationStep = layerGroup + tickCounter;
+            private void createSplashParticle(Location center, double radius, double maxHeight) {
+                if (maxHeight <= 0) return;
+                double angle = Math.random() * 2 * Math.PI;
+                double y = Math.random() * maxHeight;
+                Location spawnLoc = center.clone().add(radius * Math.cos(angle), y, radius * Math.sin(angle));
 
-                for (int point = 0; point < totalAnglePoints; point++) {
-                    boolean isEmptySpace = false;
-                    for (int j = 0; j < emptyLanes; j++) {
-                        int emptyLaneStartPoint = (j * (totalAnglePoints / emptyLanes) + rotationStep) % totalAnglePoints;
-                        for (int k = 0; k < holeWidthInPoints; k++) {
-                            if (point == (emptyLaneStartPoint + k) % totalAnglePoints) {
-                                isEmptySpace = true;
-                                break;
-                            }
+                BlockDisplay splash = center.getWorld().spawn(spawnLoc, BlockDisplay.class, (s) -> {
+                    s.setBlock(getRandomBlockData());
+                });
+
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        if (splash.isValid()) {
+                            splash.remove();
                         }
-                        if (isEmptySpace) break;
                     }
-
-                    double angle = point * anglePerPoint;
-                    double x = center.getX() + screwRadius * Math.cos(angle);
-                    double z = center.getZ() + screwRadius * Math.sin(angle);
-                    Location loc = new Location(center.getWorld(), x, center.getY() + y, z);
-
-                    loc.getBlock().setType(isEmptySpace ? Material.AIR : Material.POWDER_SNOW, false);
-                }
+                }.runTaskLater(DF_Main.getInstance(), 6L); // Lasts for 6 ticks
             }
         }.runTaskTimer(DF_Main.getInstance(), 0L, 1L);
     }
 
-    private void startDestructionAnimation(List<Location> waterBlocks, Location center, int upwardHeight, int downwardHeight, double screwRadius) {
-        final List<Location> allBlocks = new ArrayList<>(waterBlocks);
+    private void startDestructionAnimation(List<Location> waterBlocks, Location center, int upwardHeight, int downwardHeight, Map<Location, Biome> originalBiomes, Map<BlockDisplay, Double> risingBars, List<Map<Location, BlockData>> originalBlockChunks) {
+        // The list of specific water blocks is no longer needed for destruction.
         waterBlocks.clear();
 
         new BukkitRunnable() {
-            int yOffset = 0;
-            final int maxHeight = Math.max(upwardHeight, downwardHeight);
-            final int layersPerTick = 5;
+            final int DESTRUCTION_DURATION_TICKS = originalBlockChunks.size(); // 각 청크가 1회 실행을 의미
+            int chunkIndex = 0; // We will restore one chunk at a time
+            int tickCounter = 0;
+            boolean destructionFinished = false;
 
             @Override
             public void run() {
-                for (int i = 0; i < layersPerTick; i++) {
-                    if (yOffset >= maxHeight) {
-                        // 남아있는 물 블록이 있다면 안전하게 모두 제거합니다.
-                        for (Location loc : allBlocks) {
-                            Material type = loc.getBlock().getType();
-                            if (type == Material.BUBBLE_COLUMN) {
-                                loc.getBlock().setType(Material.AIR, false);
-                            }
-                        }
-                        allBlocks.clear();
-                        this.cancel();
-                        return;
+                // --- Stop Condition ---
+                // Stop when both water blocks are cleared and decorative bars are gone, or after a timeout.
+                if ((destructionFinished && risingBars.isEmpty()) || tickCounter > DESTRUCTION_DURATION_TICKS + 40) {
+                    // Final cleanup just in case
+                    if (!risingBars.isEmpty()) {
+                        risingBars.forEach((bar, speed) -> { if (bar.isValid()) bar.remove(); });
+                        risingBars.clear();
                     }
 
-                    // 가루눈 기둥을 아래에서부터 제거합니다.
-                    final double innerRadiusSq = (screwRadius - 1.0) * (screwRadius - 1.0);
-                    final double outerRadiusSq = screwRadius * screwRadius;
-                    for (double xOffset = -screwRadius; xOffset <= screwRadius; xOffset++) {
-                        for (double zOffset = -screwRadius; zOffset <= screwRadius; zOffset++) {
-                            double distSq = xOffset * xOffset + zOffset * zOffset;
-                            if (distSq > innerRadiusSq && distSq <= outerRadiusSq) {
-                                Location upLoc = center.clone().add(xOffset, yOffset, zOffset);
-                                if (upLoc.getBlock().getType() == Material.POWDER_SNOW) upLoc.getBlock().setType(Material.AIR, false);
-                                Location downLoc = center.clone().add(xOffset, -yOffset, zOffset);
-                                if (downLoc.getBlock().getType() == Material.POWDER_SNOW) downLoc.getBlock().setType(Material.AIR, false);
+                    // --- Biome Restoration ---
+                    for (Map.Entry<Location, Biome> entry : originalBiomes.entrySet()) {
+                        Location loc = entry.getKey();
+                        center.getWorld().setBiome(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ(), entry.getValue());
+                    }
+
+                    // --- Final Block Restoration from Backup ---
+                    // This is the ultimate cleanup, reverting the entire area to its pre-ability state
+                    // to ensure nothing is left behind, even if the animation misses something.
+                    if (originalBlockChunks != null) {
+                        for (Map<Location, BlockData> chunk : originalBlockChunks) {
+                            for (Map.Entry<Location, BlockData> entry : chunk.entrySet()) {
+                                entry.getKey().getBlock().setBlockData(entry.getValue(), false);
                             }
                         }
                     }
 
-                    // 한 층의 물기둥을 위아래로 제거합니다.
-                    double currentYUp = center.getY() + yOffset;
-                    double currentYDown = center.getY() - yOffset;
-                    allBlocks.removeIf(loc -> {
-                        boolean isUpLayer = yOffset < upwardHeight && Math.abs(loc.getY() - currentYUp) < 0.1;
-                        boolean isDownLayer = yOffset > 0 && yOffset <= downwardHeight && Math.abs(loc.getY() - currentYDown) < 0.1;
-
-                        if (isUpLayer || isDownLayer) {
-                            Material type = loc.getBlock().getType();
-                            if (type == Material.BUBBLE_COLUMN) {
-                                loc.getBlock().setType(Material.AIR, false);
-                            }
-                            return true;
-                        }
-                        return false;
-                    });
-                    yOffset++;
+                    this.cancel();
+                    return;
                 }
+
+                // --- Animate and accelerate rising bars to finish within DESTRUCTION_DURATION_TICKS ---
+                for (Iterator<Map.Entry<BlockDisplay, Double>> iterator = risingBars.entrySet().iterator(); iterator.hasNext(); ) {
+                    Map.Entry<BlockDisplay, Double> entry = iterator.next();
+                    BlockDisplay bar = entry.getKey();
+                    double originalSpeed = entry.getValue();
+
+                    if (!bar.isValid()) {
+                        iterator.remove();
+                        continue;
+                    }
+
+                    double remainingHeight = (center.getY() + upwardHeight) - bar.getLocation().getY();
+                    double remainingTicks = Math.max(1, DESTRUCTION_DURATION_TICKS - tickCounter);
+                    double requiredSpeed = remainingHeight / remainingTicks;
+                    double currentSpeed = Math.max(originalSpeed, requiredSpeed);
+
+                    Location newLoc = bar.getLocation().add(0, currentSpeed, 0);
+
+                    if (newLoc.getY() >= center.getY() + upwardHeight || tickCounter >= DESTRUCTION_DURATION_TICKS) {
+                        bar.remove();
+                        iterator.remove();
+                    } else {
+                        bar.teleport(newLoc);
+                    }
+                }
+
+                // --- 아래에서 위로 올라가며 블록 복원 ---
+                if (!destructionFinished) {
+                    if (tickCounter % 4 == 0) {
+                        // Play sound at the approximate height of the current chunk
+                        int yOffset = -downwardHeight + (chunkIndex * 10);
+                        Location soundLoc = center.clone().add(0, yOffset, 0);
+                        center.getWorld().playSound(soundLoc, Sound.ENTITY_GENERIC_BURN, 2.0f, 0.8f);
+                    }
+
+                    // Restore one chunk of blocks
+                    if (chunkIndex < originalBlockChunks.size()) {
+                        Map<Location, BlockData> chunkToRestore = originalBlockChunks.get(chunkIndex);
+                        for (Map.Entry<Location, BlockData> entry : chunkToRestore.entrySet()) {
+                            entry.getKey().getBlock().setBlockData(entry.getValue(), false);
+                        }
+                        chunkIndex++;
+                    }
+
+                    if (chunkIndex >= originalBlockChunks.size()) {
+                        destructionFinished = true;
+                    }
+                }
+
+                tickCounter++;
             }
-        }.runTaskTimer(DF_Main.getInstance(), 0L, 1L); // 1틱마다 한 층씩 제거
+        }.runTaskTimer(DF_Main.getInstance(), 0L, 2L);
     }
 }

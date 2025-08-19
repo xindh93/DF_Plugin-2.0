@@ -121,7 +121,7 @@ public class DFAdminCommand implements CommandExecutor {
 
         switch (category) {
             case "death" -> settingsEditor.openDeathTimerSettings(player);
-            case "pylon" -> settingsEditor.openPylonFeaturesSettings(player);
+            case "pylon" -> settingsEditor.openPylonSettings(player);
             case "worldborder" -> settingsEditor.openWorldBorderSettings(player);
             case "utility" -> settingsEditor.openUtilitySettings(player);
             case "openchant" -> settingsEditor.openOpEnchantSettings(player);

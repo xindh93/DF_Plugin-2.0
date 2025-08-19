@@ -45,16 +45,11 @@ public class EndEventListener implements Listener {
             event.setCancelled(true);
             World endWorld = Bukkit.getWorld("world_the_end");
 
-            // 엔드 월드가 없으면 생성합니다.
+            // 엔드 월드는 openEnd()에서 미리 생성되어 있어야 합니다.
             if (endWorld == null) {
-                player.sendMessage("§e엔드 월드를 생성 중입니다. 잠시만 기다려주세요...");
-                endWorld = new WorldCreator("world_the_end")
-                        .environment(World.Environment.THE_END)
-                        .createWorld();
-                if (endWorld == null) {
-                    player.sendMessage("§c엔드 월드를 생성하는 데 실패했습니다. 서버 관리자에게 문의하세요.");
-                    return; // 월드 생성 실패 시 중단
-                }
+                player.sendMessage("§c엔드 월드에 접근할 수 없습니다. 서버 관리자에게 문의하세요.");
+                DF_Main.getInstance().getLogger().severe("Player " + player.getName() + " tried to enter The End, but the world is not loaded!");
+                return;
             }
 
             double x = (Math.random() * 100) - 50;

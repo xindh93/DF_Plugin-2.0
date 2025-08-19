@@ -141,20 +141,13 @@ public class LightningSpearAbility implements ISpecialAbility {
 
     @Override
     public void onProjectileLaunch(ProjectileLaunchEvent event, Player player, ItemStack item) {
-        // '뇌창' 모드에서는 플레이어가 직접 삼지창을 던지는 것을 막습니다.
-        // 이를 통해 '뇌창' 아이템을 잃어버리거나, 회수 시 인벤토리에 중복 생성되는 문제를 방지합니다.
-        event.setCancelled(true);
-        player.getWorld().playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.5f); // 효과음으로 피드백
+        // '뇌창' 모드에서는 플레이어가 직접 삼지창을 던질 수 있습니다.
+        // onEquip 및 onCleanup 로직이 아이템을 다시 손에 들었을 때 공전 창을 재생성합니다.
+        // 이벤트를 취소하지 않아 바닐라 투척이 가능하도록 합니다.
     }
 
     @Override
     public void onDamageByEntity(EntityDamageByEntityEvent event, Player player, ItemStack item) {
-        // 공전 중인 삼지창이 피격당하면, 모든 데미지, 소리, 이펙트를 취소합니다.
-        if (event.getEntity().hasMetadata(FLOATING_TRIDENT_META_KEY)) {
-            event.setCancelled(true);
-            return;
-        }
-
         if (!(event.getDamager() instanceof Trident trident) || !(event.getEntity() instanceof LivingEntity target)) {
             return;
         }
@@ -596,7 +589,7 @@ public class LightningSpearAbility implements ISpecialAbility {
 
         Trident trident = (Trident) player.getWorld().spawnEntity(spawnLoc, EntityType.TRIDENT);
         trident.setGravity(false);
-        trident.setInvulnerable(true);
+        trident.setInvulnerable(false);
         trident.setPickupStatus(Trident.PickupStatus.DISALLOWED);
         trident.setMetadata(FLOATING_TRIDENT_META_KEY, new FixedMetadataValue(DF_Main.getInstance(), player.getUniqueId()));
         trident.setPierceLevel((byte) 127);

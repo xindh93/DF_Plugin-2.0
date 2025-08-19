@@ -58,7 +58,7 @@ public class StatsManager {
                     UUID uuid = UUID.fromString(uuidStr);
                     PlayerStats stats = new PlayerStats();
                     for (StatType type : StatType.values()) {
-                        int value = statsConfig.getInt("players." + uuidStr + "." + type.name(), 1);
+                        int value = statsConfig.getInt("players." + uuidStr + "." + type.name(), 3);
                         stats.setStat(type, value);
                     }
                     stats.setKills(statsConfig.getInt("players." + uuidStr + ".kills", 0));
@@ -115,6 +115,15 @@ public class StatsManager {
         statsCache.put(playerUUID, stats);
     }
 
+    /**
+     * 플레이어의 스탯 데이터가 캐시에 존재하는지 확인합니다.
+     * @param playerUUID 확인할 플레이어의 UUID
+     * @return 스탯이 존재하면 true
+     */
+    public boolean hasStats(UUID playerUUID) {
+        return statsCache.containsKey(playerUUID);
+    }
+
     public void openEditor(Player editor, Player target) {
         PlayerStats stats = getPlayerStats(target.getUniqueId());
         editor.openInventory(StatsEditor.create(target, stats));
@@ -146,28 +155,24 @@ public class StatsManager {
             return;
         }
 
-        // 1. 평가자 목록 생성 (온라인 + 권한 보유)
+        // 1. 평가자 목록 생성 (자신을 제외한 모든 온라인 플레이어)
         this.currentEvaluators.clear();
         this.currentEvaluators.addAll(Bukkit.getOnlinePlayers().stream()
-                .filter(p -> p.hasPermission("df.admin.register"))
                 .map(Player::getUniqueId)
                 .collect(Collectors.toList()));
 
         if (this.currentEvaluators.size() < 2) {
-            editor.sendMessage("§c평균을 내기 위해 평가에 참여할 관리자가 2명 이상 필요합니다.");
+            editor.sendMessage("§c평균을 내기 위해 온라인 플레이어가 2명 이상 필요합니다.");
             return;
         }
 
-        // 2. 평가 대상 목록 생성 (스탯이 등록되지 않은 모든 플레이어)
-        List<UUID> targets = plugin.getPlayerRegistryManager().getAllPlayerUUIDs().stream()
-                .filter(uuid -> getPlayerStats(uuid).isDefault())
-                .collect(Collectors.toList());
+        // 2. 평가 대상 목록 생성 (모든 온라인 플레이어)
+        List<UUID> targets = new ArrayList<>(this.currentEvaluators);
 
         if (targets.isEmpty()) {
-            editor.sendMessage("§c새로 평가할 플레이어가 없습니다.");
+            editor.sendMessage("§c평가할 플레이어가 없습니다.");
             return;
         }
-
         // 3. 각 평가자에게 평가 세션 생성 및 시작 알림
         this.massEvaluationActive = true;
         this.pendingEvaluations.clear();
@@ -191,7 +196,7 @@ public class StatsManager {
                 session.setCurrentStats(getPlayerStats(personalTargets.get(0)).clone());
             }
             massRegistrationSessions.put(evaluatorUUID, session);
-            evaluator.sendMessage("§a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 평가가 시작되었습니다.");
+            evaluator.sendMessage("§a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 재평가가 시작되었습니다.");
             displayNextPlayerForRegistration(evaluator);
         }
     }
@@ -202,22 +207,41 @@ public class StatsManager {
             return;
         }
 
-        if (massRegistrationSessions.containsKey(editor.getUniqueId())) {
-            editor.sendMessage("§c이미 스탯 평가를 진행 중입니다. 종료하려면 /dfadmin cancelstat 를 입력하세요.");
-            return;
-        }
-        if (editor.getUniqueId().equals(targetUUID)) {
-            editor.sendMessage("§c자기 자신은 평가할 수 없습니다.");
+        // 1. 평가자 목록 생성 (온라인 OP 플레이어)
+        this.currentEvaluators.clear();
+        this.currentEvaluators.addAll(Bukkit.getOnlinePlayers().stream()
+                .filter(Player::isOp)
+                .map(Player::getUniqueId)
+                .collect(Collectors.toList()));
+
+        if (this.currentEvaluators.isEmpty()) {
+            editor.sendMessage("§c평가에 참여할 관리자(OP)가 온라인에 없습니다.");
             return;
         }
 
-        List<UUID> targets = Arrays.asList(targetUUID);
-        MassRegistrationSession session = new MassRegistrationSession(editor.getUniqueId(), targets);
-        session.setCurrentStats(getPlayerStats(targetUUID).clone());
+        if (this.currentEvaluators.contains(targetUUID) && this.currentEvaluators.size() < 2) {
+            editor.sendMessage("§c평가 대상이 관리자이며, 다른 관리자가 없어 평가를 진행할 수 없습니다.");
+            return;
+        }
 
-        massRegistrationSessions.put(editor.getUniqueId(), session);
-        editor.sendMessage("§a" + Bukkit.getOfflinePlayer(targetUUID).getName() + "님에 대한 스탯 평가를 시작합니다.");
-        displayNextPlayerForRegistration(editor);
+        // 2. 평가 대상은 단일 플레이어
+        List<UUID> targets = Collections.singletonList(targetUUID);
+
+        // 3. 각 평가자에게 평가 세션 생성 및 시작 알림
+        this.massEvaluationActive = true;
+        this.pendingEvaluations.clear();
+        massRegistrationSessions.clear();
+
+        for (UUID evaluatorUUID : this.currentEvaluators) {
+            Player evaluator = Bukkit.getPlayer(evaluatorUUID);
+            if (evaluator == null || evaluatorUUID.equals(targetUUID)) continue; // 자신은 평가하지 않음
+
+            MassRegistrationSession session = new MassRegistrationSession(evaluatorUUID, targets);
+            session.setCurrentStats(getPlayerStats(targetUUID).clone());
+            massRegistrationSessions.put(evaluatorUUID, session);
+            evaluator.sendMessage("§a" + Bukkit.getOfflinePlayer(targetUUID).getName() + "님에 대한 스탯 평가를 시작합니다.");
+            displayNextPlayerForRegistration(evaluator);
+        }
     }
 
     private void displayNextPlayerForRegistration(Player editor) {
@@ -299,7 +323,7 @@ public class StatsManager {
 
             for (Map.Entry<StatType, Integer> entry : totalScores.entrySet()) {
                 int average = (int) Math.round((double) entry.getValue() / submissionCount);
-                finalStats.setStat(entry.getKey(), Math.max(1, Math.min(10, average))); // 1~10 범위 보장
+                finalStats.setStat(entry.getKey(), Math.max(1, Math.min(5, average))); // 1~5 범위 보장
             }
 
             // 최종 스탯 저장

@@ -12,16 +12,14 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 public class BootsProfile implements IUpgradeableProfile {
 
+    private static final String ATTRIBUTE_NAME = "upgrade.movement_speed";
     private static final ISpecialAbility DOUBLE_JUMP_ABILITY = new DoubleJumpAbility();
 
     @Override
     public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
-        final String ATTRIBUTE_NAME = "upgrade.movement_speed";
-
         // 1. 아이템의 모든 관련 속성을 초기화합니다.
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR);
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS);
@@ -36,7 +34,7 @@ public class BootsProfile implements IUpgradeableProfile {
         double totalValue = speedBonusPerLevel * level;
 
         if (totalValue > 0) {
-            AttributeModifier mod = new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "upgrade_movement_speed"), totalValue, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
+            AttributeModifier mod = new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), ATTRIBUTE_NAME), totalValue, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
             meta.addAttributeModifier(Attribute.GENERIC_MOVEMENT_SPEED, mod);
         }
     }

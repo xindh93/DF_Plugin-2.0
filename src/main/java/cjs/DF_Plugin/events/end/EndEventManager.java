@@ -5,6 +5,7 @@ import cjs.DF_Plugin.enchant.MagicStone;
 import cjs.DF_Plugin.items.UpgradeItems;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.WorldCreator;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
@@ -85,6 +86,20 @@ public class EndEventManager {
         // 엔드를 열기 전에 항상 월드를 초기화하여 새로운 경험을 제공합니다.
         plugin.getLogger().info("Resetting The End before opening...");
         plugin.getWorldManager().resetWorld("world_the_end");
+
+        // 월드가 로드되었는지 확인하고, 그렇지 않으면 생성합니다.
+        World endWorld = Bukkit.getWorld("world_the_end");
+        if (endWorld == null) {
+            plugin.getLogger().info("The End world is not loaded, creating it now...");
+            endWorld = new WorldCreator("world_the_end")
+                    .environment(World.Environment.THE_END)
+                    .createWorld();
+            if (endWorld == null) {
+                plugin.getLogger().severe("엔드 월드를 생성하는 데 실패했습니다!");
+                Bukkit.broadcastMessage("§c[오류] 엔드 월드를 생성하는 데 실패했습니다. 서버 관리자에게 문의하세요.");
+                return;
+            }
+        }
 
         if (openTask != null) {
             openTask.cancel();

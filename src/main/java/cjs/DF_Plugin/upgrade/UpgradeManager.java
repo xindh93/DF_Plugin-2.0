@@ -154,12 +154,6 @@ public class UpgradeManager {
         final String itemUUID = originalMeta.getPersistentDataContainer().get(ITEM_UUID_KEY, PersistentDataType.STRING);
         final String currentMode = originalMeta.getPersistentDataContainer().getOrDefault(TRIDENT_MODE_KEY, PersistentDataType.STRING, "backflow");
 
-        // 이전 모드의 능력 효과를 정리하고 쿨다운을 초기화합니다.
-        ISpecialAbility oldAbility = abilityManager.getRegisteredAbility(currentMode);
-        if (oldAbility != null) {
-            abilityManager.resetCooldown(player, oldAbility);
-        }
-
         // 2. 새로운 모드를 결정합니다.
         final String newMode = currentMode.equals("backflow") ? "lightning_spear" : "backflow";
 

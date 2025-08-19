@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.upgrade.profile.type;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
 import cjs.DF_Plugin.upgrade.specialability.impl.SuperJumpAbility;
@@ -8,16 +9,16 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 public class LeggingsProfile implements IUpgradeableProfile {
 
-    private static final String ATTRIBUTE_NAME = "upgrade.health";
+    private static final String ATTRIBUTE_NAME = "upgrade.health.leggings";
 
     private static final ISpecialAbility SUPER_JUMP_ABILITY = new SuperJumpAbility();
 

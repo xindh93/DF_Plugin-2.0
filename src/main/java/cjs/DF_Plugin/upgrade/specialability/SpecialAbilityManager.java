@@ -90,6 +90,7 @@ public class SpecialAbilityManager {
                     dataConfig.set(path + ".current", info.current());
                     dataConfig.set(path + ".max", info.max());
                     dataConfig.set(path + ".displayName", info.displayName());
+                    dataConfig.set(path + ".visible", info.visible());
                 }
             });
         });
@@ -140,7 +141,9 @@ public class SpecialAbilityManager {
                 int current = playerSection.getInt(key + ".current");
                 int max = playerSection.getInt(key + ".max");
                 String displayName = playerSection.getString(key + ".displayName", "Ability");
-                charges.put(key, new ChargeInfo(current, max, displayName, true)); // 이전 데이터는 항상 보이도록 설정
+                // visible 상태를 불러오고, 없으면 안전하게 false로 기본 설정합니다.
+                boolean visible = playerSection.getBoolean(key + ".visible", false);
+                charges.put(key, new ChargeInfo(current, max, displayName, visible));
             }
             if (!charges.isEmpty()) {
                 playerCharges.put(uuid, charges);
@@ -172,6 +175,24 @@ public class SpecialAbilityManager {
                 Optional.ofNullable(getRegisteredAbility(abilityName)).ifPresent(ability -> ability.onCleanup(player));
             });
         }
+    }
+
+    /**
+     * 서버 종료 시, 온라인 상태인 모든 플레이어의 활성화된 능력을 정리합니다.
+     * 이는 onCleanup을 호출하여 액션바, 공전 삼지창 등을 올바르게 제거하고,
+     * 이 상태가 파일에 저장되어 재접속 시 원치 않는 효과가 나타나는 문제를 방지합니다.
+     */
+    public void cleanupAllActiveAbilities() {
+        // lastActiveAbilities 맵을 순회하며 온라인 플레이어에 대한 정리 작업을 수행합니다.
+        // ConcurrentModificationException을 방지하기 위해 키셋의 복사본을 사용합니다.
+        new HashSet<>(lastActiveAbilities.keySet()).forEach(uuid -> {
+            Player player = Bukkit.getPlayer(uuid);
+            // 플레이어가 온라인 상태일 때만 정리 작업을 수행합니다.
+            // 오프라인 플레이어는 onPlayerQuit에서 이미 정리되었습니다.
+            if (player != null && player.isOnline()) {
+                cleanupPlayer(player);
+            }
+        });
     }
 
     /**
@@ -298,7 +319,6 @@ public class SpecialAbilityManager {
      */
     public void setCooldown(Player player, ISpecialAbility ability, ItemStack item, double cooldownSeconds) {
         if (cooldownSeconds <= 0) return;
-
         long newEndTime = System.currentTimeMillis() + (long) (cooldownSeconds * 1000);
         String cooldownKey = getCooldownKey(player, ability, item);
         String displayName = ability.getDisplayName();
@@ -359,18 +379,6 @@ public class SpecialAbilityManager {
      * @param player 대상 플레이어
      * @param ability 충전량을 환불할 능력
      */
-    public void refundCharge(Player player, ISpecialAbility ability) {
-        if (ability.getMaxCharges() <= 1) return; // 충전식 능력이 아니면 실행하지 않음
-
-        String chargeKey = getChargeKey(ability);
-        Map<String, ChargeInfo> charges = playerCharges.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>());
-        int maxCharges = ability.getMaxCharges();
-        // 현재 정보가 없으면 최대치로 간주
-        ChargeInfo info = charges.getOrDefault(chargeKey, new ChargeInfo(maxCharges, maxCharges, ability.getDisplayName(), true));
-
-        int newCount = Math.min(maxCharges, info.current() + 1);
-        charges.put(chargeKey, new ChargeInfo(newCount, maxCharges, ability.getDisplayName(), true));
-    }
 
     public long getRemainingCooldown(Player player, ISpecialAbility ability, ItemStack item) {
         String cooldownKey = getCooldownKey(player, ability, item);

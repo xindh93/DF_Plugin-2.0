@@ -1,13 +1,15 @@
 package cjs.DF_Plugin.upgrade.profile.type;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
-import cjs.DF_Plugin.upgrade.specialability.impl.DamageNegationAbility;
+import cjs.DF_Plugin.upgrade.specialability.impl.AbsorptionShieldAbility;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
@@ -15,9 +17,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class ChestplateProfile implements IUpgradeableProfile {
-    private static final String ATTRIBUTE_NAME = "upgrade.health";
+    private static final String ATTRIBUTE_NAME = "upgrade.health.chestplate";
 
-    private static final ISpecialAbility DAMAGE_NEGATION_ABILITY = new DamageNegationAbility();
+    private static final ISpecialAbility ABSORPTION_SHIELD_ABILITY = new AbsorptionShieldAbility();
 
     @Override
     public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
@@ -57,6 +59,6 @@ public class ChestplateProfile implements IUpgradeableProfile {
 
     @Override
     public Optional<ISpecialAbility> getSpecialAbility() {
-        return Optional.of(DAMAGE_NEGATION_ABILITY);
+        return Optional.of(ABSORPTION_SHIELD_ABILITY);
     }
 }

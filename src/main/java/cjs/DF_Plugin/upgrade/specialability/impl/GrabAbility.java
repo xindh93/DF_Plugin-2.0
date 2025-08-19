@@ -41,13 +41,12 @@ public class GrabAbility implements ISpecialAbility {
         // 낚시찌를 던질 때 (FISHING state)
         if (event.getState() == PlayerFishEvent.State.FISHING) {
             if (event.getHook() != null) {
+                int level = DF_Main.getInstance().getUpgradeManager().getUpgradeLevel(item);
+                double rangeBonusPerLevel = config.getConfig().getDouble("upgrade.generic-bonuses.fishing_rod.range-bonus-per-level", 0.05);
+                double totalBonus = 1.0 + (rangeBonusPerLevel * level);
+
                 Vector velocity = event.getHook().getVelocity();
-
-                double velocityMultiplier = config.getConfig().getDouble("upgrade.special-abilities.grab.details.cast-velocity-multiplier", 3.0);
-                double maxVelocity = config.getConfig().getDouble("upgrade.special-abilities.grab.details.cast-max-velocity", 10.0);
-
-                // 속도를 증폭시키되, 최대치를 넘지 않도록 제한합니다.
-                velocity = velocity.normalize().multiply(Math.min(velocity.length() * velocityMultiplier, maxVelocity));
+                velocity.multiply(totalBonus);
                 event.getHook().setVelocity(velocity);
             }
             return; // 속도만 조절하고 종료

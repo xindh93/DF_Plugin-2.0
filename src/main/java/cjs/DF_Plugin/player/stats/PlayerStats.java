@@ -9,14 +9,14 @@ public class PlayerStats implements Cloneable {
     private int deaths = 0;
 
     public PlayerStats() {
-        // 모든 스탯을 기본값 1로 초기화합니다.
+        // 모든 스탯을 기본값 3으로 초기화합니다.
         for (StatType type : StatType.values()) {
-            stats.put(type, 1);
+            stats.put(type, 3);
         }
     }
 
     public int getStat(StatType type) {
-        return stats.getOrDefault(type, 1);
+        return stats.getOrDefault(type, 3);
     }
 
     public void setStat(StatType type, int value) {
@@ -62,13 +62,13 @@ public class PlayerStats implements Cloneable {
     }
 
     /**
-     * 모든 스탯이 기본값(1)인지 확인합니다.
-     * @return 모든 스탯이 1이면 true, 아니면 false
+     * 모든 스탯이 기본값(3)인지 확인합니다.
+     * @return 모든 스탯이 3이면 true, 아니면 false
      */
     public boolean isDefault() {
         if (kills != 0 || deaths != 0) return false;
         for (int value : stats.values()) {
-            if (value != 1) return false;
+            if (value != 3) return false;
         }
         return true;
     }

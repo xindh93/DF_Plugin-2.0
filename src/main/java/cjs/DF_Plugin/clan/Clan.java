@@ -103,6 +103,9 @@ public class Clan {
     public void setLeader(UUID leader) { this.leader = leader; }
     public void addMember(UUID member) { members.add(member); }
     public void removeMember(UUID member) { members.remove(member); }
+    public void clearAllMembers() {
+        members.clear();
+    }
     public void addPylonLocation(String location) { addPylonLocation(location, PylonType.MAIN_CORE); }
     public void addPylonLocation(String location, PylonType type) { pylonLocations.put(location, type); }
     public void removePylonLocation(String location) { pylonLocations.remove(location); }
