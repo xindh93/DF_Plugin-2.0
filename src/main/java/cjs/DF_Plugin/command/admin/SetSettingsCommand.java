@@ -91,8 +91,8 @@ public class SetSettingsCommand {
     private void refreshSettingsUI(Player player, String key) {
         if (key.startsWith("death-timer.")) {
             settingsEditor.openDeathTimerSettings(player);
-        } else if (key.startsWith("pylon.features.")) {
-            settingsEditor.openPylonFeaturesSettings(player);
+        } else if (key.startsWith("pylon.")) {
+            settingsEditor.openPylonSettings(player);
         } else if (key.startsWith("world.border.")) {
             settingsEditor.openWorldBorderSettings(player);
         } else if (key.startsWith("world.rules.") || key.startsWith("events.") || key.equals("items.notched-apple-recipe") || key.startsWith("utility.")) {
@@ -102,7 +102,7 @@ public class SetSettingsCommand {
         } else if (key.startsWith("boss-mob-strength.")) {
             settingsEditor.openBossMobStrengthSettings(player);
         } else {
-            settingsEditor.openMainMenu(player); // Fallback
+            settingsEditor.openMainMenu(player);
         }
     }
 }

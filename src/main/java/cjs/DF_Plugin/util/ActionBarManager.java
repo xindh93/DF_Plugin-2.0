@@ -3,8 +3,7 @@ package cjs.DF_Plugin.util;
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
 import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityManager;
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -12,19 +11,18 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class ActionBarManager {
 
-    private final DF_Main plugin;
     private final SpecialAbilityManager specialAbilityManager;
 
     public ActionBarManager(DF_Main plugin, SpecialAbilityManager specialAbilityManager) {
-        this.plugin = plugin;
         this.specialAbilityManager = specialAbilityManager;
-        startUpdater();
+        startUpdater(plugin);
     }
 
-    private void startUpdater() {
+    private void startUpdater(DF_Main plugin) {
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -32,70 +30,81 @@ public class ActionBarManager {
                     updateActionBar(player);
                 }
             }
-        }.runTaskTimer(plugin, 0L, 5L); // 0.25초마다 업데이트
+        }.runTaskTimer(plugin, 0L, 2L); // 0.1초마다 액션바 업데이트
     }
 
     private void updateActionBar(Player player) {
+        UUID playerUUID = player.getUniqueId();
         List<String> parts = new ArrayList<>();
-        long currentTime = System.currentTimeMillis();
 
-        // 충전량이 있는 능력을 먼저 표시
-        Map<String, SpecialAbilityManager.ChargeInfo> charges = specialAbilityManager.getPlayerCharges(player.getUniqueId());
-        if (charges != null) {
-            for (Map.Entry<String, SpecialAbilityManager.ChargeInfo> entry : charges.entrySet()) {
-                String abilityKey = entry.getKey();
-                SpecialAbilityManager.ChargeInfo info = entry.getValue();
-
-                // 액션바에 표시하지 않도록 설정되었거나, 현재 보이지 않는 상태의 능력은 건너뜁니다.
-                ISpecialAbility ability = specialAbilityManager.getRegisteredAbility(abilityKey);
-                if (ability == null || !ability.showInActionBar() || !info.visible()) {
-                    continue;
-                }
-
-                // 점(dot) 형태로 충전량 시각화
-                StringBuilder chargeDisplay = new StringBuilder();
-                chargeDisplay.append("§a"); // 사용 가능한 횟수는 녹색
-                for (int i = 0; i < info.current(); i++) {
-                    chargeDisplay.append("●");
-                }
-                chargeDisplay.append("§7"); // 사용한 횟수는 회색
-                for (int i = 0; i < info.max() - info.current(); i++) {
-                    chargeDisplay.append("○");
-                }
-
-                parts.add(String.format("%s %s", info.displayName(), chargeDisplay.toString()));
-            }
-        }
-
-        // 전체 쿨다운 중인 능력을 나중에 표시
-        Map<String, SpecialAbilityManager.CooldownInfo> cooldowns = specialAbilityManager.getPlayerCooldowns(player.getUniqueId());
+        // 쿨다운 정보 추가
+        Map<String, SpecialAbilityManager.CooldownInfo> cooldowns = specialAbilityManager.getPlayerCooldowns(playerUUID);
         if (cooldowns != null) {
-            cooldowns.entrySet().stream()
-                    .filter(entry -> entry.getValue().endTime() > currentTime) // 만료된 쿨다운은 제외
-                    .forEach(entry -> {
-                        String abilityKey = entry.getKey();
-                        SpecialAbilityManager.CooldownInfo info = entry.getValue();
+            cooldowns.forEach((key, info) -> {
+                long remainingMillis = info.endTime() - System.currentTimeMillis();
+                if (remainingMillis > 0) {
+                    // 이 능력이 액션바에 표시되도록 설정되었는지 확인합니다.
+                    ISpecialAbility ability = specialAbilityManager.getRegisteredAbility(key);
+                    if (ability != null && !ability.showInActionBar()) {
+                        return; // showInActionBar()가 false이면 건너뜁니다.
+                    }
 
-                        // 모드 변환 쿨다운이거나, 액션바에 표시하도록 설정된 능력일 경우에만 표시합니다.
-                        boolean isModeSwitch = abilityKey.equals(SpecialAbilityManager.MODE_SWITCH_COOLDOWN_KEY);
-                        ISpecialAbility ability = specialAbilityManager.getRegisteredAbility(abilityKey);
-                        boolean isVisibleAbility = ability != null && ability.showInActionBar();
-
-                        if (isModeSwitch || isVisibleAbility) {
-                            long secondsLeft = (info.endTime() - currentTime + 999) / 1000;
-                            parts.add(String.format("%s §7%d초", info.displayName(), secondsLeft));
-                        }
-                    });
+                    // 남은 시간을 초 단위 정수로 표시합니다.
+                    int remainingSeconds = (int) Math.ceil(remainingMillis / 1000.0);
+                    parts.add(String.format("%s: %d초", info.displayName(), remainingSeconds));
+                }
+            });
         }
 
-        if (!parts.isEmpty()) {
-            String message = String.join("  §7|  ", parts);
-            sendActionBar(player, message);
+        // 충전량 정보 추가
+        Map<String, SpecialAbilityManager.ChargeInfo> charges = specialAbilityManager.getPlayerCharges(playerUUID);
+        if (charges != null) {
+            charges.forEach((key, info) -> {
+                if (info.visible()) {
+                    parts.add(formatCharges(info));
+                }
+            });
         }
+
+        if (parts.isEmpty()) {
+            return;
+        }
+
+        String message;
+        if (parts.size() > 5) {
+            // 5개 이상이면 두 줄로 나눕니다.
+            int midPoint = (parts.size() + 1) / 2;
+            String line1 = String.join("   ", parts.subList(0, midPoint));
+            String line2 = String.join("   ", parts.subList(midPoint, parts.size()));
+            message = line1 + "\n" + line2;
+        } else {
+            // 4개 이하면 한 줄로 표시합니다.
+            message = String.join("   ", parts);
+        }
+
+        player.sendActionBar(Component.text(message));
     }
 
-    public static void sendActionBar(Player player, String message) {
-        if (player == null || !player.isOnline()) return;
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(message));
+    private String formatCharges(SpecialAbilityManager.ChargeInfo info) {
+        // 능력에 설정된 표시 유형에 따라 포맷을 결정합니다.
+        if (info.displayType() == ISpecialAbility.ChargeDisplayType.FRACTION) {
+            return String.format("%s %d/%d", info.displayName(), info.current(), info.max());
+        }
+
+        // 점(dot)으로 표시합니다.
+        String displayName = info.displayName();
+        String colorCode = "§e"; // 기본값: 노랑
+
+        // 능력의 표시 이름에서 색상 코드를 추출합니다.
+        if (displayName.length() >= 2 && displayName.charAt(0) == '§') {
+            colorCode = displayName.substring(0, 2);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(displayName).append(" ");
+        for (int i = 0; i < info.max(); i++) {
+            sb.append(i < info.current() ? colorCode + "●" : "§7○");
+        }
+        return sb.toString();
     }
 }

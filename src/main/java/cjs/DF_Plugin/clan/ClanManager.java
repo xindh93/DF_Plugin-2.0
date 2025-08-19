@@ -1,22 +1,31 @@
 package cjs.DF_Plugin.clan;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.storage.ClanStorageManager;
+import cjs.DF_Plugin.data.ClanDataManager;
+import cjs.DF_Plugin.data.InventoryDataManager;
 import cjs.DF_Plugin.command.clan.ui.ClanUIManager;
+import cjs.DF_Plugin.enchant.MagicStone;
+import cjs.DF_Plugin.items.UpgradeItems;
+import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 public class ClanManager {
 
     private final DF_Main plugin;
-    private final ClanStorageManager storageManager;
     private final PlayerTagManager playerTagManager;
     private final ClanUIManager uiManager;
 
@@ -36,25 +45,80 @@ public class ClanManager {
 
     public ClanManager(DF_Main plugin) {
         this.plugin = plugin;
-        this.storageManager = new ClanStorageManager(plugin);
         this.playerTagManager = new PlayerTagManager(plugin, this);
         this.uiManager = new ClanUIManager();
-        loadClans();
+        loadAllData();
     }
 
-    /**
-     * StorageManager를 통해 파일에서 모든 클랜 데이터를 불러와 캐시에 저장합니다.
-     */
-    public void loadClans() {
+    public void saveAllData() {
+        ClanDataManager cdm = plugin.getClanDataManager();
+        InventoryDataManager idm = plugin.getInventoryDataManager();
+
+        // 모든 클랜 정보 저장
+        clans.values().forEach(clan -> {
+            ConfigurationSection clanSection = cdm.getClanSection(clan.getName());
+            clanSection.set("leader", clan.getLeader().toString());
+            clanSection.set("color", clan.getColor().name());
+            clanSection.set("members", clan.getMembers().stream().map(UUID::toString).collect(Collectors.toList()));
+            clanSection.set("pending-first-spawn", clan.getPendingFirstSpawns().stream().map(UUID::toString).collect(Collectors.toList()));
+            // Map<String, PylonType>을 저장하기 위해 Map<String, String>으로 변환
+            Map<String, String> pylonData = clan.getPylonLocations().entrySet().stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().name()));
+            clanSection.set("pylon-locations", pylonData);
+            clanSection.set("last-giftbox-time", clan.getLastGiftBoxTime());
+            clanSection.set("last-pylon-recovery-time", clan.getLastPylonRecoveryTime());
+            clanSection.set("last-sub-pylon-recovery-time", clan.getLastSubPylonRecoveryTime());
+            clanSection.set("last-firework-time", clan.getLastFireworkTime());
+        });
+
+        // 모든 인벤토리 정보 저장
+        pylonStorages.forEach((clanName, inv) -> idm.saveInventory(inv, "pylon_storage", clanName));
+        giftBoxInventories.forEach((clanName, inv) -> idm.saveInventory(inv, "gift_box", clanName));
+    }
+
+    public void loadAllData() {
         clans.clear();
         playerClanMap.clear();
-        Map<String, Clan> loadedClans = storageManager.loadAllClans();
-        clans.putAll(loadedClans);
-        clans.values().forEach(clan -> {
+
+        ClanDataManager cdm = plugin.getClanDataManager();
+        InventoryDataManager idm = plugin.getInventoryDataManager();
+        ConfigurationSection clansSection = cdm.getClansSection();
+
+        for (String clanName : clansSection.getKeys(false)) {
+            ConfigurationSection clanSection = clansSection.getConfigurationSection(clanName);
+            if (clanSection == null) continue;
+
+            Clan clan = new Clan(clanName, UUID.fromString(clanSection.getString("leader")), ChatColor.valueOf(clanSection.getString("color", "WHITE")));
+            clanSection.getStringList("members").forEach(uuidStr -> clan.addMember(UUID.fromString(uuidStr)));
+            // pylon-locations 로드
+            ConfigurationSection pylonSection = clanSection.getConfigurationSection("pylon-locations");
+            if (pylonSection != null) {
+                for (String locStr : pylonSection.getKeys(false)) {
+                    PylonType type = PylonType.valueOf(pylonSection.getString(locStr, "MAIN_CORE"));
+                    clan.addPylonLocation(locStr, type);
+                }
+            }
+            List<String> pendingUuids = clanSection.getStringList("pending-first-spawn");
+            if (pendingUuids != null) {
+                pendingUuids.forEach(uuidStr -> clan.addPendingFirstSpawn(UUID.fromString(uuidStr)));
+            }
+            clan.setLastGiftBoxTime(clanSection.getLong("last-giftbox-time"));
+            clan.setLastPylonRecoveryTime(clanSection.getLong("last-pylon-recovery-time"));
+            clan.setLastSubPylonRecoveryTime(clanSection.getLong("last-sub-pylon-recovery-time"));
+            clan.setLastFireworkTime(clanSection.getLong("last-firework-time"));
+
+            clans.put(clanName.toLowerCase(), clan);
             clan.getMembers().forEach(memberId -> playerClanMap.put(memberId, clan));
-            pylonStorages.put(clan.getName(), storageManager.loadPylonStorage(clan));
-            giftBoxInventories.put(clan.getName(), storageManager.loadGiftBox(clan));
-        });
+
+            // 인벤토리 로드
+            Inventory pylonStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
+            idm.loadInventory(pylonStorage, "pylon_storage", clanName);
+            pylonStorages.put(clanName, pylonStorage);
+
+            Inventory giftBox = Bukkit.createInventory(null, 27, clan.getFormattedName() + "§f의 선물상자");
+            idm.loadInventory(giftBox, "gift_box", clanName);
+            giftBoxInventories.put(clanName, giftBox);
+        }
         plugin.getLogger().info("ClanManager loaded with " + clans.size() + " clans.");
     }
 
@@ -70,10 +134,21 @@ public class ClanManager {
         }
 
         Clan clan = new Clan(name, leader.getUniqueId(), color);
-        clan.setLastGiftBoxTime(System.currentTimeMillis()); // 선물상자 타이머 시작
+        // clan.setLastGiftBoxTime(System.currentTimeMillis()); // 선물상자 타이머는 이제 GameStartManager에서 게임 시작 시 설정합니다.
         clans.put(name.toLowerCase(), clan);
         playerClanMap.put(leader.getUniqueId(), clan);
-        storageManager.saveClan(clan);
+
+        // 게임 도중 가문 생성 시, 시작 지점을 할당하고 플레이어를 재접속시켜 해당 위치로 이동하게 합니다.
+        if (plugin.getGameStartManager().isGameStarted()) {
+            Location startLoc = plugin.getGameStartManager().getRandomSafeLocation(leader.getWorld());
+            clan.setStartLocation(startLoc);
+            // 리더가 다음 접속 시 시작 지점으로 이동하도록 초기 텔레포트 플래그를 리셋합니다.
+            plugin.getPlayerDataManager().setInitialTeleportDone(leader.getUniqueId(), false);
+            // 재접속을 유도하여 PlayerJoinListener 로직을 태웁니다.
+            leader.kickPlayer("§a가문이 생성되었습니다. 재접속하여 시작 지점으로 이동해주세요.");
+        }
+
+        saveClanData(clan);
         return clan;
     }
 
@@ -102,7 +177,9 @@ public class ClanManager {
         clans.remove(clan.getName().toLowerCase());
 
         // 3. Delete the clan's data files (clan.yml, storage.yml, giftbox.yml).
-        storageManager.deleteClan(clan.getName());
+        plugin.getClanDataManager().getClansSection().set(clan.getName(), null);
+        plugin.getInventoryDataManager().getInventoriesSection("pylon_storage").set(clan.getName(), null);
+        plugin.getInventoryDataManager().getInventoriesSection("gift_box").set(clan.getName(), null);
 
         // 4. Remove the clan's scoreboard team.
         playerTagManager.cleanupClanTeam(clan);
@@ -122,7 +199,7 @@ public class ClanManager {
         Bukkit.broadcastMessage(publicMessage);
 
         // 패배한 가문의 모든 파일런 구조물과 보호 영역을 제거합니다.
-        for (String locString : defender.getPylonLocations()) {
+        for (String locString : defender.getPylonLocations().keySet()) {
             org.bukkit.Location pylonLoc = PluginUtils.deserializeLocation(locString);
             if (pylonLoc != null) {
                 // 블록 자체를 공기로 만들어 아이템 드롭을 방지하고 즉시 제거합니다.
@@ -146,7 +223,11 @@ public class ClanManager {
         }
 
         // Save the state of the victorious clan
-        storageManager.saveClan(attacker);
+        saveClanData(attacker);
+
+        // 패배한 가문의 멤버 목록을 비워서, deleteClan 메소드가
+        // 흡수된 멤버들의 소속 정보를 잘못 제거하는 것을 방지합니다.
+        defender.clearAllMembers();
 
         // Remove the defeated clan from the system
         deleteClan(defender);
@@ -155,7 +236,7 @@ public class ClanManager {
     public void addPlayerToClan(Player player, Clan clan) {
         clan.addMember(player.getUniqueId());
         playerClanMap.put(player.getUniqueId(), clan);
-        storageManager.saveClan(clan);
+        saveClanData(clan);
         playerTagManager.updatePlayerTag(player);
         plugin.getPlayerRegistryManager().updatePlayerClan(player.getUniqueId(), clan);
     }
@@ -163,7 +244,7 @@ public class ClanManager {
     public void addMemberToClan(Clan clan, UUID memberUUID) {
         clan.addMember(memberUUID);
         playerClanMap.put(memberUUID, clan);
-        storageManager.saveClan(clan);
+        saveClanData(clan);
         Player onlineMember = Bukkit.getPlayer(memberUUID);
         if (onlineMember != null) {
             playerTagManager.updatePlayerTag(onlineMember);
@@ -194,12 +275,30 @@ public class ClanManager {
         }
 
         // 변경된 가문 정보를 저장합니다.
-        storageManager.saveClan(clan);
+        saveClanData(clan);
+    }
+
+    public void saveClanData(Clan clan) {
+        ClanDataManager cdm = plugin.getClanDataManager();
+        ConfigurationSection clanSection = cdm.getClanSection(clan.getName());
+        clanSection.set("leader", clan.getLeader().toString());
+        clanSection.set("color", clan.getColor().name());
+        clanSection.set("members", clan.getMembers().stream().map(UUID::toString).collect(Collectors.toList()));
+        // 새로 추가된 보류중인 첫 스폰 유저 목록도 저장합니다.
+        clanSection.set("pending-first-spawn", clan.getPendingFirstSpawns().stream().map(UUID::toString).collect(Collectors.toList()));
+        // Map<String, PylonType>을 저장하기 위해 Map<String, String>으로 변환
+        Map<String, String> pylonData = clan.getPylonLocations().entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().name()));
+        clanSection.set("pylon-locations", pylonData);
+        clanSection.set("last-giftbox-time", clan.getLastGiftBoxTime());
+        clanSection.set("last-pylon-recovery-time", clan.getLastPylonRecoveryTime());
+        clanSection.set("last-sub-pylon-recovery-time", clan.getLastSubPylonRecoveryTime());
+        clanSection.set("last-firework-time", clan.getLastFireworkTime());
+        cdm.saveConfig(); // 개별 저장은 즉시 파일에 반영
     }
 
     public Clan getClanByName(String name) { return clans.get(name.toLowerCase()); }
     public Clan getClanByPlayer(UUID uuid) { return playerClanMap.get(uuid); }
-    public ClanStorageManager getStorageManager() { return storageManager; }
     public PlayerTagManager getPlayerTagManager() { return playerTagManager; }
 
     public int getMaxMembers() {
@@ -213,7 +312,7 @@ public class ClanManager {
      */
     public Optional<Clan> getClanByPylonLocation(String locationStr) {
         return clans.values().stream()
-                .filter(clan -> clan.getPylonLocations().contains(locationStr))
+                .filter(clan -> clan.getPylonLocations().containsKey(locationStr))
                 .findFirst();
     }
     public Collection<Clan> getClans() { return clans.values(); }
@@ -337,9 +436,11 @@ public class ClanManager {
             return;
         }
 
-        Inventory storage = pylonStorages.computeIfAbsent(clan.getName(), clanName ->
-                storageManager.loadPylonStorage(clan)
-        );
+        Inventory storage = pylonStorages.computeIfAbsent(clan.getName(), clanName -> {
+            Inventory newStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
+            plugin.getInventoryDataManager().loadInventory(newStorage, "pylon_storage", clanName);
+            return newStorage;
+        });
 
         player.openInventory(storage);
     }
@@ -352,9 +453,11 @@ public class ClanManager {
      */
     public Inventory getPylonStorage(Clan clan) {
         if (clan == null) return null;
-        return pylonStorages.computeIfAbsent(clan.getName(), clanName ->
-                storageManager.loadPylonStorage(clan)
-        );
+        return pylonStorages.computeIfAbsent(clan.getName(), clanName -> {
+            Inventory newStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
+            plugin.getInventoryDataManager().loadInventory(newStorage, "pylon_storage", clanName);
+            return newStorage;
+        });
     }
 
     public Map<String, Inventory> getPylonStorages() {
@@ -362,9 +465,71 @@ public class ClanManager {
     }
 
     public Inventory getGiftBoxInventory(Clan clan) {
-        return giftBoxInventories.computeIfAbsent(clan.getName(), k ->
-                storageManager.loadGiftBox(clan)
-        );
+        return giftBoxInventories.computeIfAbsent(clan.getName(), k -> {
+            Inventory newGiftBox = Bukkit.createInventory(null, 27, clan.getFormattedName() + "§f의 선물상자");
+            plugin.getInventoryDataManager().loadInventory(newGiftBox, "gift_box", clan.getName());
+            return newGiftBox;
+        });
+    }
+
+    /**
+     * 모든 가문의 선물상자를 리필합니다.
+     * 이 메서드는 GiftBoxRefillTask에 의해 호출됩니다.
+     * @param refillTime 리필이 실행된 시간 (모든 가문에 동일하게 적용)
+     */
+    public void refillAllGiftBoxes(long refillTime) {
+        FileConfiguration config = plugin.getGameConfigManager().getConfig();
+        int minTotalItems = config.getInt("pylon.giftbox.min-reward-items", 1);
+        int maxTotalItems = config.getInt("pylon.giftbox.max-reward-items", 10);
+
+        for (Clan clan : getAllClans()) {
+            Inventory giftBox = getGiftBoxInventory(clan);
+
+            // 1. 총 아이템 개수를 무작위로 결정합니다.
+            int totalItemCount = (maxTotalItems > minTotalItems) ? ThreadLocalRandom.current().nextInt(minTotalItems, maxTotalItems + 1) : minTotalItems;
+
+            // 2. 총 개수를 강화석과 마석으로 무작위 분배합니다.
+            int upgradeStoneAmount = (totalItemCount > 0) ? ThreadLocalRandom.current().nextInt(0, totalItemCount + 1) : 0;
+            int magicStoneAmount = totalItemCount - upgradeStoneAmount;
+
+            // 3. 추가할 아이템 목록을 만듭니다.
+            List<ItemStack> itemsToAdd = new ArrayList<>();
+            if (upgradeStoneAmount > 0) {
+                itemsToAdd.add(UpgradeItems.createUpgradeStone(upgradeStoneAmount));
+            }
+            if (magicStoneAmount > 0) {
+                itemsToAdd.add(MagicStone.createMagicStone(magicStoneAmount));
+            }
+
+            // 4. 인벤토리의 빈 슬롯 목록을 가져옵니다.
+            List<Integer> emptySlots = new ArrayList<>();
+            for (int i = 0; i < giftBox.getSize(); i++) {
+                ItemStack item = giftBox.getItem(i);
+                if (item == null || item.getType() == Material.AIR) {
+                    emptySlots.add(i);
+                }
+            }
+
+            boolean couldNotFitAll = emptySlots.size() < itemsToAdd.size();
+
+            // 5. 빈 슬롯을 무작위로 섞어 아이템을 흩뿌립니다.
+            Collections.shuffle(emptySlots);
+            for (int i = 0; i < itemsToAdd.size() && i < emptySlots.size(); i++) {
+                giftBox.setItem(emptySlots.get(i), itemsToAdd.get(i));
+            }
+
+            // 선물상자 쿨다운 타이머가 초기화되도록 마지막 리필 시간을 갱신합니다.
+            clan.setLastGiftBoxTime(refillTime);
+
+            if (couldNotFitAll) {
+                clan.broadcastMessage(PluginUtils.colorize("&c[선물상자] &f선물상자가 가득 차서 일부 또는 모든 선물을 받지 못했습니다!"));
+            } else {
+                clan.broadcastMessage(PluginUtils.colorize("&d[선물상자] &f가문의 선물상자에 새로운 선물이 도착했습니다!"));
+            }
+        }
+
+        // 모든 선물상자 리필 후, 변경된 인벤토리 데이터를 즉시 파일에 저장하여 데이터 유실을 방지합니다.
+        plugin.getInventoryDataManager().saveConfig();
     }
 
     public Map<String, Inventory> getGiftBoxInventories() {

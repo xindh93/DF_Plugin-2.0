@@ -23,7 +23,7 @@ public class StunAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§8기절";
+        return "§d기절";
     }
 
     @Override

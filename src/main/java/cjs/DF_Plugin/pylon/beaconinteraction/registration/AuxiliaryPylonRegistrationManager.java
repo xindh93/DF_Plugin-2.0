@@ -21,7 +21,7 @@ public class AuxiliaryPylonRegistrationManager {
         // 2. 파일런 정보 등록
         String locationString = PluginUtils.serializeLocation(beacon.getLocation());
         clan.addPylonLocation(locationString, PylonType.AUXILIARY);
-        plugin.getClanManager().getStorageManager().saveClan(clan);
+        plugin.getClanManager().saveClanData(clan);
 
         // 3. 영역 보호 활성화
         plugin.getPylonManager().getAreaManager().addProtectedPylon(beacon.getLocation(), clan);

@@ -4,6 +4,8 @@ import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
+import org.bukkit.Color;
+import org.bukkit.Particle;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -13,6 +15,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class LaserShotAbility implements ISpecialAbility {
 
@@ -26,7 +29,7 @@ public class LaserShotAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§c레이저 샷";
+        return "§b레이저 샷";
     }
 
     @Override
@@ -55,6 +58,19 @@ public class LaserShotAbility implements ISpecialAbility {
             arrow.setVelocity(arrow.getVelocity().multiply(velocityMultiplier));
             // 속도 증가량을 메타데이터에 저장하여, 피격 시 대미지를 보정하는 데 사용합니다.
             arrow.setMetadata(LASER_SHOT_VELOCITY_KEY, new FixedMetadataValue(DF_Main.getInstance(), velocityMultiplier));
+
+            // 레이저 궤적 파티클을 생성합니다.
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (arrow.isDead() || arrow.isOnGround() || !arrow.isValid()) {
+                        this.cancel();
+                        return;
+                    }
+                    // 붉은색 파티클을 화살 위치에 생성합니다.
+                    arrow.getWorld().spawnParticle(Particle.END_ROD, arrow.getLocation(), 1, 0, 0, 0, 0);
+                }
+            }.runTaskTimer(DF_Main.getInstance(), 0L, 1L);
         }
     }
 

@@ -30,7 +30,7 @@ public class DFTabCompleter implements TabCompleter {
         List<String> suggestions = new ArrayList<>();
 
         if (args.length == 1) {
-            suggestions.addAll(Arrays.asList("createclan", "deleteclan"));
+            suggestions.add("clan");
             if (sender.hasPermission("df.admin")) {
                 suggestions.add("admin");
             }
@@ -42,11 +42,8 @@ public class DFTabCompleter implements TabCompleter {
                 case "admin":
                     handleAdminTabComplete(sender, subArgs, suggestions);
                     break;
-                case "createclan":
-                    handleCreateClanTabComplete(sender, subArgs, suggestions);
-                    break;
-                case "deleteclan":
-                    handleDeleteClanTabComplete(sender, subArgs, suggestions);
+                case "clan":
+                    handleClanTabComplete(sender, subArgs, suggestions);
                     break;
             }
         }
@@ -56,20 +53,65 @@ public class DFTabCompleter implements TabCompleter {
         return completions;
     }
 
-    private void handleCreateClanTabComplete(CommandSender sender, String[] subArgs, List<String> suggestions) {
+    private void handleClanTabComplete(CommandSender sender, String[] subArgs, List<String> suggestions) {
         if (subArgs.length == 1) {
+            suggestions.addAll(Arrays.asList("create", "delete"));
+        } else if (subArgs.length >= 2) {
+            String action = subArgs[0].toLowerCase();
+            String[] actionArgs = Arrays.copyOfRange(subArgs, 1, subArgs.length);
+            switch (action) {
+                case "create" -> handleClanCreateTabComplete(actionArgs, suggestions);
+                case "delete" -> handleClanDeleteTabComplete(actionArgs, suggestions);
+            }
+        }
+    }
+
+    /** /df clan create ... 명령어의 자동 완성을 처리합니다. */
+    private void handleClanCreateTabComplete(String[] actionArgs, List<String> suggestions) {
+        if (actionArgs.length == 1) {
             suggestions.addAll(Arrays.asList("setname", "color", "confirm"));
-        } else if (subArgs.length == 2 && subArgs[0].equalsIgnoreCase("color")) {
+        } else if (actionArgs.length == 2 && actionArgs[0].equalsIgnoreCase("color")) {
             suggestions.addAll(Arrays.asList("prev", "next"));
         }
     }
 
-    private void handleDeleteClanTabComplete(CommandSender sender, String[] subArgs, List<String> suggestions) {
-        if (subArgs.length == 1) {
-            // 1단계 확인, 2단계 확인
+    /** /df clan delete ... 명령어의 자동 완성을 처리합니다. */
+    private void handleClanDeleteTabComplete(String[] actionArgs, List<String> suggestions) {
+        if (actionArgs.length == 1) {
             suggestions.addAll(Arrays.asList("confirm", "finalconfirm"));
         }
     }
+
+    /** /df admin ... 명령어의 자동 완성을 처리합니다. */
+    private void handleAdminTabComplete(CommandSender sender, String[] subArgs, List<String> suggestions) {
+        if (!sender.hasPermission("df.admin")) return;
+
+        if (subArgs.length == 1) {
+            suggestions.addAll(Arrays.asList(
+                    "gamemode", "settings", "set", "getweapon", "clan",
+                    "register", "controlender", "unban", "game", "getitem", "statview", "rift"
+            ));
+            return;
+        }
+
+        String adminSubCommand = subArgs[0].toLowerCase();
+        String[] commandArgs = Arrays.copyOfRange(subArgs, 1, subArgs.length);
+
+        switch (adminSubCommand) {
+            case "gamemode" -> handleGameModeTabComplete(commandArgs, suggestions);
+            case "settings" -> handleSettingsTabComplete(commandArgs, suggestions);
+            case "getweapon" -> handleAdminGetWeaponTabComplete(commandArgs, suggestions);
+            case "clan" -> handleAdminClanTabComplete(commandArgs, suggestions);
+            case "statview" -> handleAdminStatViewTabComplete(commandArgs, suggestions);
+            case "controlender" -> handleAdminControlEnderTabComplete(commandArgs, suggestions);
+            case "game" -> handleAdminGameTabComplete(commandArgs, suggestions);
+            case "unban" -> handleAdminUnbanTabComplete(commandArgs, suggestions);
+            case "getitem" -> handleAdminGetItemTabComplete(commandArgs, suggestions);
+            case "rift" -> handleAdminRiftTabComplete(commandArgs, suggestions);
+        }
+    }
+
+    // --- 관리자 명령어별 자동 완성 헬퍼 메서드 ---
 
     private void handleGameModeTabComplete(String[] subArgs, List<String> suggestions) {
         if (subArgs.length == 1) {
@@ -83,76 +125,49 @@ public class DFTabCompleter implements TabCompleter {
         } else if (subArgs.length == 2) {
             String category = subArgs[0].toLowerCase();
             switch (category) {
-                case "openchant":
-                    suggestions.addAll(Arrays.asList("breach", "thorns"));
-                    break;
-                case "bossmobstrength":
-                    suggestions.addAll(Arrays.asList("ender_dragon", "wither"));
-                    break;
+                case "openchant" -> suggestions.addAll(Arrays.asList("breach", "thorns"));
+                case "bossmobstrength" -> suggestions.addAll(Arrays.asList("ender_dragon", "wither"));
             }
-        } else if (subArgs.length == 3) {
-            String category = subArgs[0].toLowerCase();
-            if (category.equals("openchant")) {
-                suggestions.addAll(Arrays.asList("true", "false"));
-            }
+        } else if (subArgs.length == 3 && "openchant".equals(subArgs[0].toLowerCase())) {
+            suggestions.addAll(Arrays.asList("true", "false"));
         }
     }
 
-    private void handleAdminTabComplete(CommandSender sender, String[] subArgs, List<String> suggestions) {
-        if (!sender.hasPermission("df.admin")) return;
+    private void handleAdminStatViewTabComplete(String[] subArgs, List<String> suggestions) {
+        if (subArgs.length == 1) {
+            suggestions.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).collect(Collectors.toList()));
+        }
+    }
 
-        if (subArgs.length == 1) { // 어드민 명령어 1단계
-            suggestions.addAll(Arrays.asList(
-                    "gamemode", "settings", "set", "getweapon", "clan",
-                    "register", "controlender", "unban", "game", "getitem", "supplydrop"
-            ));
-        } else if (subArgs.length >= 2) { // 어드민 명령어 2단계 이상
-            String adminSubCommand = subArgs[0].toLowerCase();
-            String[] adminSubArgs = Arrays.copyOfRange(subArgs, 1, subArgs.length);
-            switch (adminSubCommand) {
-                case "gamemode":
-                    handleGameModeTabComplete(adminSubArgs, suggestions);
-                    break;
-                case "settings":
-                    handleSettingsTabComplete(adminSubArgs, suggestions);
-                    break;
-                case "getweapon":
-                    handleAdminGetWeaponTabComplete(adminSubArgs, suggestions);
-                    break;
-                case "clan":
-                    handleAdminClanTabComplete(adminSubArgs, suggestions);
-                    break;
-                case "controlender":
-                    if (adminSubArgs.length == 1) {
-                        suggestions.addAll(Arrays.asList("open", "openafter", "close"));
-                    }
-                    break;
-                case "game":
-                    if (adminSubArgs.length == 1) {
-                        suggestions.addAll(Arrays.asList("start", "stop"));
-                    }
-                    break;
-                case "unban": {
-                    plugin.getPlayerDeathManager().getDeadPlayers().keySet().forEach(uuid -> {
-                        OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
-                        if (player.getName() != null) {
-                            suggestions.add(player.getName());
-                        }
-                    });
-                    break;
+    private void handleAdminControlEnderTabComplete(String[] subArgs, List<String> suggestions) {
+        if (subArgs.length == 1) {
+            suggestions.addAll(Arrays.asList("open", "openafter", "close"));
+        }
+    }
+
+    private void handleAdminGameTabComplete(String[] subArgs, List<String> suggestions) {
+        if (subArgs.length == 1) {
+            suggestions.addAll(Arrays.asList("start", "stop"));
+        }
+    }
+
+    private void handleAdminUnbanTabComplete(String[] subArgs, List<String> suggestions) {
+        if (subArgs.length == 1) {
+            plugin.getPlayerDeathManager().getDeadPlayers().keySet().forEach(uuid -> {
+                OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+                if (player.getName() != null) {
+                    suggestions.add(player.getName());
                 }
-                case "getitem":
-                    handleAdminGetItemTabComplete(adminSubArgs, suggestions);
-                    break;
-                case "supplydrop":
-                    if (adminSubArgs.length == 1) {
-                        suggestions.add("start");
-                    }
-                    break;
-            }
+            });
         }
     }
 
+    private void handleAdminRiftTabComplete(String[] subArgs, List<String> suggestions) {
+        if (subArgs.length == 1) {
+            suggestions.addAll(Arrays.asList("start", "toggle", "status"));
+        }
+    }
+    
     private void handleAdminGetItemTabComplete(String[] subArgs, List<String> suggestions) {
         if (subArgs.length == 1) {
             suggestions.addAll(Arrays.asList("main_core", "aux_core", "master_compass", "upgrade_stone", "magic_stone", "return_scroll"));

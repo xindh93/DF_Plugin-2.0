@@ -14,7 +14,7 @@ public class UpgradeItems {
     public static ItemStack createUpgradeStone(int amount) {
         ItemStack stone = new ItemBuilder(Material.ECHO_SHARD)
                 .withName("§d강화석")
-                .withLore("§7장비를 개조하는 데 사용되는 신비한 광물입니다.")
+                .withLore("§7장비를 강화는 신비한 광물입니다.")
                 .withPDCString(UPGRADE_STONE_KEY, "true")
                 .build();
         stone.setAmount(amount);

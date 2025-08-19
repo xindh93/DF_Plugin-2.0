@@ -12,6 +12,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -23,7 +24,10 @@ import org.bukkit.event.player.PlayerRiptideEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import cjs.DF_Plugin.upgrade.specialability.impl.LightningSpearAbility;
 import org.bukkit.inventory.ItemStack;
+import java.util.UUID;
+import java.util.Optional;
 
 public class SpecialAbilityListener implements Listener {
 
@@ -57,6 +61,11 @@ public class SpecialAbilityListener implements Listener {
         ItemStack item = event.getItem();
         if (item == null) return;
 
+        // 10강 이상인 아이템만 능력이 발동됩니다.
+        if (upgradeManager.getUpgradeLevel(item) < cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+            return;
+        }
+
         // 각 능력 클래스가 어떤 클릭에 반응할지 직접 결정하도록 이벤트를 전달합니다.
         // 이 방식은 '뇌창'의 좌클릭 발동과 '역류'의 우클릭 발동을 모두 지원하는 등 유연성을 높여줍니다.
         specialAbilityManager.getAbilityFromItem(item).ifPresent(ability -> {
@@ -68,28 +77,39 @@ public class SpecialAbilityListener implements Listener {
     @EventHandler
     public void onPlayerSwapHandItems(PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
-        ItemStack mainHandItem = event.getMainHandItem();
-        ItemStack offHandItem = event.getOffHandItem();
+        // PlayerSwapHandItemsEvent의 getMainHandItem()은 '부 손'에 있던 아이템(주 손으로 올 아이템)을 반환합니다.
+        // 따라서 '주 손'에 있던 아이템을 확인하려면 getOffHandItem()을 사용해야 합니다.
+        ItemStack tridentInMainHand = event.getOffHandItem();
 
-        ItemStack tridentToSwitch = null;
-
-        // 주 손 또는 부 손에 10강 삼지창이 있는지 확인합니다.
-        if (mainHandItem != null && mainHandItem.getType() == Material.TRIDENT && upgradeManager.getUpgradeLevel(mainHandItem) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
-            tridentToSwitch = mainHandItem;
-        } else if (offHandItem != null && offHandItem.getType() == Material.TRIDENT && upgradeManager.getUpgradeLevel(offHandItem) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
-            tridentToSwitch = offHandItem;
-        }
-
-        // 모드를 변경할 삼지창을 찾았다면
-        if (tridentToSwitch != null) {
+        // 모드 변경은 주 손에 10강 삼지창이 있을 때만 작동합니다.
+        if (tridentInMainHand != null && tridentInMainHand.getType() == Material.TRIDENT && upgradeManager.getUpgradeLevel(tridentInMainHand) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
             // 실제 아이템 스왑을 막고, 모드 변경 로직만 실행합니다.
             event.setCancelled(true);
-            upgradeManager.switchTridentMode(player, tridentToSwitch);
+
+            // 모드가 변경된 새로운 아이템 스택을 받습니다.
+            ItemStack newTrident = upgradeManager.switchTridentMode(player, tridentInMainHand);
+
+            // 기존 아이템을 새로운 아이템으로 교체합니다.
+            player.getInventory().setItemInMainHand(newTrident);
         }
     }
 
     @EventHandler
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        // [버그 수정] 공전하는 뇌창이 어떤 이유로든(팀 충돌 실패, 서버 랙 등) 시전자를 공격하는 것을 원천적으로 방지합니다.
+        // 이 이벤트가 발생하면, 이후 발사되는 삼지창의 공격이 무효화되는 버그의 트리거가 되는 것으로 보입니다.
+        if (event.getDamager() instanceof Trident trident && event.getEntity() instanceof Player victim) {
+            // 해당 삼지창이 '공전 중인' 삼지창인지 메타데이터로 확인합니다.
+            if (trident.hasMetadata(LightningSpearAbility.FLOATING_TRIDENT_META_KEY)) {
+                // 삼지창의 소유자 UUID와 피해자의 UUID가 일치하는지 확인합니다.
+                Object ownerUUIDValue = trident.getMetadata(LightningSpearAbility.FLOATING_TRIDENT_META_KEY).get(0).value();
+                if (ownerUUIDValue instanceof UUID && victim.getUniqueId().equals(ownerUUIDValue)) {
+                    event.setCancelled(true);
+                    return; // 이벤트 처리를 즉시 중단합니다.
+                }
+            }
+        }
+
         // --- 공격자(Attacker)의 능력 처리 ---
         Player attacker = null;
         ItemStack weapon = null;
@@ -137,8 +157,11 @@ public class SpecialAbilityListener implements Listener {
         if (attacker != null && weapon != null) {
             final Player finalAttacker = attacker; // 람다에서 사용하기 위해 final 변수에 할당
             final ItemStack finalWeapon = weapon; // weapon은 이미 effectively final이지만, 명확성을 위해 final로 선언합니다.
-            specialAbilityManager.getAbilityFromItem(finalWeapon)
-                    .ifPresent(ability -> ability.onDamageByEntity(event, finalAttacker, finalWeapon));
+            // 10강 이상인 아이템만 능력이 발동됩니다.
+            if (upgradeManager.getUpgradeLevel(finalWeapon) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+                specialAbilityManager.getAbilityFromItem(finalWeapon)
+                        .ifPresent(ability -> ability.onDamageByEntity(event, finalAttacker, finalWeapon));
+            }
         }
 
         // --- 피격자(Victim)의 능력 처리 ---
@@ -146,8 +169,11 @@ public class SpecialAbilityListener implements Listener {
             // 1. 갑옷 능력 (항상 방어/유틸 능력으로 간주)
             for (ItemStack armor : victim.getInventory().getArmorContents()) {
                 if (armor == null || armor.getType() == Material.AIR) continue;
-                specialAbilityManager.getAbilityFromItem(armor)
-                        .ifPresent(ability -> ability.onDamageByEntity(event, victim, armor));
+                // 10강 이상인 아이템만 능력이 발동됩니다.
+                if (upgradeManager.getUpgradeLevel(armor) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+                    specialAbilityManager.getAbilityFromItem(armor)
+                            .ifPresent(ability -> ability.onDamageByEntity(event, victim, armor));
+                }
             }
 
             // 2. 양손에 든 아이템의 능력 (방어/유틸리티 아이템만)
@@ -169,8 +195,11 @@ public class SpecialAbilityListener implements Listener {
 
         // 피격 시 발동해야 하는 방어/유틸리티 아이템 타입만 명시적으로 허용합니다.
         if (itemType == Material.SHIELD || itemType == Material.FISHING_ROD) {
-            specialAbilityManager.getAbilityFromItem(item)
-                    .ifPresent(ability -> ability.onDamageByEntity(event, victim, item));
+            // 10강 이상인 아이템만 능력이 발동됩니다.
+            if (upgradeManager.getUpgradeLevel(item) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+                specialAbilityManager.getAbilityFromItem(item)
+                        .ifPresent(ability -> ability.onDamageByEntity(event, victim, item));
+            }
         }
     }
 
@@ -183,11 +212,8 @@ public class SpecialAbilityListener implements Listener {
 
         // 플레이어가 착용한 모든 장비를 확인하여 능력을 찾습니다.
         for (ItemStack armor : player.getInventory().getArmorContents()) {
-            if (armor != null) {
-                specialAbilityManager.getAbilityFromItem(armor).ifPresent(ability -> {
-                    ability.onPlayerToggleFlight(event, player, armor);
-                });
-            }
+            getAbilityIfReady(armor).ifPresent(ability ->
+                ability.onPlayerToggleFlight(event, player, armor));
         }
     }
 
@@ -199,16 +225,14 @@ public class SpecialAbilityListener implements Listener {
         // 슈퍼 점프(레깅스)와 공중 대시(부츠)는 모두 웅크리기로 발동되므로,
         // 이 핸들러에서 모든 갑옷을 순회하며 처리하는 것이 효율적입니다.
         for (ItemStack armor : player.getInventory().getArmorContents()) {
-            if (armor != null) {
-                specialAbilityManager.getAbilityFromItem(armor)
-                        .ifPresent(ability -> ability.onPlayerToggleSneak(event, player, armor));
-            }
+            getAbilityIfReady(armor).ifPresent(ability ->
+                ability.onPlayerToggleSneak(event, player, armor));
         }
 
         // 손에 든 아이템 능력 (그래플링 훅 등)
         ItemStack itemInHand = player.getInventory().getItemInMainHand();
-        specialAbilityManager.getAbilityFromItem(itemInHand)
-                .ifPresent(ability -> ability.onPlayerToggleSneak(event, player, itemInHand));
+        getAbilityIfReady(itemInHand).ifPresent(ability ->
+            ability.onPlayerToggleSneak(event, player, itemInHand));
     }
 
     @EventHandler
@@ -222,8 +246,8 @@ public class SpecialAbilityListener implements Listener {
         // 새로운 '공중 대시'는 웅크리기로 발동되므로, onPlayerMove에서 비행 상태를 제어할 필요가 없습니다.
         // 이동 시 발동하는 모든 장비의 특수 능력 처리 (예: 재생, 슈퍼점프 상태 초기화)
         for (ItemStack armor : player.getInventory().getArmorContents()) {
-            specialAbilityManager.getAbilityFromItem(armor)
-                    .ifPresent(ability -> ability.onPlayerMove(event, player, armor));
+            getAbilityIfReady(armor).ifPresent(ability ->
+                ability.onPlayerMove(event, player, armor));
         }
     }
 
@@ -235,9 +259,8 @@ public class SpecialAbilityListener implements Listener {
 
         // 플레이어가 착용한 모든 장비의 능력을 확인 (예: 낙하 데미지 면역)
         for (ItemStack armor : player.getInventory().getArmorContents()) {
-            specialAbilityManager.getAbilityFromItem(armor).ifPresent(ability -> {
-                ability.onEntityDamage(event, player, armor);
-            });
+            getAbilityIfReady(armor).ifPresent(ability ->
+                ability.onEntityDamage(event, player, armor));
         }
     }
 
@@ -254,9 +277,8 @@ public class SpecialAbilityListener implements Listener {
         if (rod == null) return;
 
         final ItemStack finalRod = rod;
-        specialAbilityManager.getAbilityFromItem(finalRod).ifPresent(ability -> {
-            ability.onPlayerFish(event, player, finalRod);
-        });
+        getAbilityIfReady(finalRod).ifPresent(ability ->
+            ability.onPlayerFish(event, player, finalRod));
     }
 
     @EventHandler
@@ -266,9 +288,8 @@ public class SpecialAbilityListener implements Listener {
         ItemStack bow = event.getBow();
         if (bow == null) return;
 
-        specialAbilityManager.getAbilityFromItem(bow).ifPresent(ability -> {
-            ability.onEntityShootBow(event, player, bow);
-        });
+        getAbilityIfReady(bow).ifPresent(ability ->
+            ability.onEntityShootBow(event, player, bow));
     }
 
     @EventHandler
@@ -282,16 +303,12 @@ public class SpecialAbilityListener implements Listener {
 
             // 주 손에 삼지창이 있고, 능력이 있다면 처리합니다.
             if (mainHand.getType() == Material.TRIDENT) {
-                specialAbilityManager.getAbilityFromItem(mainHand).ifPresent(ability -> {
-                    ability.onProjectileLaunch(event, player, mainHand);
-                });
+                getAbilityIfReady(mainHand).ifPresent(ability -> ability.onProjectileLaunch(event, player, mainHand));
             }
 
             // 이벤트가 아직 취소되지 않았고, 부 손에 삼지창이 있다면 처리합니다.
             if (!event.isCancelled() && offHand.getType() == Material.TRIDENT) {
-                specialAbilityManager.getAbilityFromItem(offHand).ifPresent(ability -> {
-                    ability.onProjectileLaunch(event, player, offHand);
-                });
+                getAbilityIfReady(offHand).ifPresent(ability -> ability.onProjectileLaunch(event, player, offHand));
             }
         }
     }
@@ -301,9 +318,7 @@ public class SpecialAbilityListener implements Listener {
         Player player = event.getPlayer();
         ItemStack item = event.getItem();
 
-        specialAbilityManager.getAbilityFromItem(item).ifPresent(ability -> {
-            ability.onPlayerRiptide(event, player, item);
-        });
+        getAbilityIfReady(item).ifPresent(ability -> ability.onPlayerRiptide(event, player, item));
     }
 
     @EventHandler
@@ -311,14 +326,37 @@ public class SpecialAbilityListener implements Listener {
         Player player = event.getPlayer();
         // 더블 점프는 부츠에 귀속된 능력이므로 부츠 아이템을 확인합니다.
         ItemStack boots = player.getInventory().getBoots();
-        specialAbilityManager.getAbilityFromItem(boots).ifPresent(ability -> {
-            ability.onPlayerJump(event, player, boots);
-        });
+        getAbilityIfReady(boots).ifPresent(ability -> ability.onPlayerJump(event, player, boots));
     }
 
     @EventHandler
     public void onProjectileHit(ProjectileHitEvent event) {
         if (!(event.getEntity() instanceof Trident trident)) return;
         if (!(trident.getShooter() instanceof Player player)) return;
+    }
+
+    @EventHandler
+    public void onPlayerResurrect(EntityResurrectEvent event) {
+        if (event.isCancelled()) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        // 불사의 토템이 사용되었을 때, 해당 능력에 쿨다운을 적용합니다.
+        ISpecialAbility totemAbility = specialAbilityManager.getRegisteredAbility("totem_of_undying");
+        if (totemAbility != null) {
+            specialAbilityManager.setCooldown(player, totemAbility, totemAbility.getCooldown());
+        }
+    }
+
+    /**
+     * 아이템이 10강 이상일 경우에만 특수 능력 객체를 가져옵니다.
+     * 반복되는 강화 레벨 확인 로직을 줄여줍니다.
+     * @param item 확인할 아이템
+     * @return 조건에 맞는 ISpecialAbility (Optional)
+     */
+    private Optional<ISpecialAbility> getAbilityIfReady(ItemStack item) {
+        if (item != null && upgradeManager.getUpgradeLevel(item) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+            return specialAbilityManager.getAbilityFromItem(item);
+        }
+        return Optional.empty();
     }
 }

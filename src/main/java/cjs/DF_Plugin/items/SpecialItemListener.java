@@ -16,11 +16,8 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
 import java.util.Comparator;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class SpecialItemListener implements Listener {
 
@@ -90,7 +87,7 @@ public class SpecialItemListener implements Listener {
         Optional<Location> nearestEnemyPylon = plugin.getClanManager().getAllClans().stream()
                 .filter(clan -> !clan.equals(playerClan)) // 자신의 가문 제외
                 .map(Clan::getMainPylonLocationObject) // 각 가문의 주 파일런 위치 가져오기
-                .filter(Objects::nonNull) // null 위치 필터링
+                .flatMap(Optional::stream) // Stream<Optional<Location>> -> Stream<Location>
                 .filter(loc -> Objects.equals(loc.getWorld(), player.getWorld())) // 같은 월드에 있는 파일런만
                 .min(Comparator.comparingDouble(loc -> player.getLocation().distanceSquared(loc))); // 가장 가까운 위치 찾기
 
@@ -110,22 +107,60 @@ public class SpecialItemListener implements Listener {
         World world = start.getWorld();
         if (world == null) return;
 
+        // Y좌표를 무시한 수평 방향 벡터를 계산합니다.
+        Vector direction = end.toVector().subtract(start.toVector());
+        direction.setY(0);
+        direction.normalize();
+
+        // 나선형 및 원형 효과를 위한 수직 벡터 계산
+        Vector up = new Vector(0, 1, 0);
+        Vector side = direction.clone().crossProduct(up).normalize();
+
         new BukkitRunnable() {
-            private final Vector direction = end.toVector().subtract(start.toVector()).normalize();
-            private double distance = 0;
-            private final double maxDistance = 10.0; // 최대 10블록까지만 파티클 표시
+            private int ticks = 0;
+            private final int durationTicks = 40; // 2초 동안 파티클 효과 지속
 
             @Override
             public void run() {
-                if (distance >= maxDistance) {
+                // 지속 시간이 지나면 작업을 취소합니다.
+                if (ticks++ > durationTicks) {
                     this.cancel();
                     return;
                 }
-                Location particleLoc = start.clone().add(direction.clone().multiply(distance));
-                // 파티클 개수 5배, 지름 1블록(반경 0.5) 범위로 변경
-                world.spawnParticle(Particle.WITCH, particleLoc, 5, 0.5, 0.5, 0.5, 0);
-                distance += 0.5;
+
+                // 시간이 지남에 따라 파티클 생성 확률을 줄여 서서히 사라지는 효과를 만듭니다.
+                double spawnChance = 1.0 - ((double) ticks / durationTicks);
+
+                // 시작점부터 목표 지점까지 파티클을 생성합니다.
+                for (double d = 1.0; d < 40.0; d += 0.5) { // 최대 40블록, 0.5블록 간격
+                    if (Math.random() > spawnChance) {
+                        continue;
+                    }
+
+                    Location centerTrail = start.clone().add(direction.clone().multiply(d));
+
+                    // 1. 중앙 파티클: 지름 1(반지름 0.5)의 보라색 원
+                    double circleRadius = 0.5;
+                    for (int i = 0; i < 6; i++) { // 6개의 점으로 원을 표현
+                        double circleAngle = ((double) i / 6) * 2 * Math.PI;
+                        Vector circleOffset = side.clone().multiply(circleRadius * Math.cos(circleAngle))
+                                .add(up.clone().multiply(circleRadius * Math.sin(circleAngle)));
+                        Particle.DustOptions dustOptions = new Particle.DustOptions(Color.PURPLE, 0.7f);
+                        world.spawnParticle(Particle.DUST, centerTrail.clone().add(circleOffset), 1, 0, 0, 0, 0, dustOptions, true);
+                    }
+
+                    // 2. 나선형 파티클 (SOUL_FIRE_FLAME) - 이중 나선
+                    double spiralRadius = 1.2; // 나선 반경
+                    double spiralAngle = d * 0.8; // 거리에 따라 각도 변경
+                    Vector spiralOffset1 = side.clone().multiply(spiralRadius * Math.cos(spiralAngle))
+                            .add(up.clone().multiply(spiralRadius * Math.sin(spiralAngle)));
+                    Vector spiralOffset2 = side.clone().multiply(spiralRadius * Math.cos(spiralAngle + Math.PI)) // 180도 반대편
+                            .add(up.clone().multiply(spiralRadius * Math.sin(spiralAngle + Math.PI)));
+
+                    world.spawnParticle(Particle.SOUL_FIRE_FLAME, centerTrail.clone().add(spiralOffset1), 1, 0, 0, 0, 0);
+                    world.spawnParticle(Particle.SOUL_FIRE_FLAME, centerTrail.clone().add(spiralOffset2), 1, 0, 0, 0, 0);
+                }
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, 2L);
     }
 }

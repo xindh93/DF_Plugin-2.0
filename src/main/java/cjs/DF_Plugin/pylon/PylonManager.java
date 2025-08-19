@@ -6,7 +6,6 @@ import cjs.DF_Plugin.pylon.beaconinteraction.PylonAreaManager;
 import cjs.DF_Plugin.pylon.beaconinteraction.PylonStructureManager;
 import cjs.DF_Plugin.pylon.beaconinteraction.registration.AuxiliaryPylonRegistrationManager;
 import cjs.DF_Plugin.pylon.beaconinteraction.registration.BeaconRegistrationManager;
-import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.pylon.item.ReturnScrollManager;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
 import cjs.DF_Plugin.pylon.beacongui.recon.ReconManager;
@@ -91,7 +90,7 @@ public class PylonManager {
      * @param clan 안정화할 가문
      */
     public void reinitializeAllBases(Clan clan) {
-        for (Map.Entry<String, PylonType> entry : clan.getPylonLocationsMap().entrySet()) {
+        for (Map.Entry<String, PylonType> entry : clan.getPylonLocations().entrySet()) {
             Location pylonLoc = PluginUtils.deserializeLocation(entry.getKey());
             PylonType pylonType = entry.getValue();
             if (pylonLoc != null) {
@@ -110,7 +109,7 @@ public class PylonManager {
         plugin.getLogger().info("Loading existing pylons...");
         int count = 0;
         for (Clan clan : plugin.getClanManager().getAllClans()) {
-            for (String locString : clan.getPylonLocations()) {
+            for (String locString : clan.getPylonLocations().keySet()) {
                 Location pylonLoc = PluginUtils.deserializeLocation(locString);
                 if (pylonLoc != null && pylonLoc.getWorld() != null) {
                     areaManager.addProtectedPylon(pylonLoc, clan);

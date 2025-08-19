@@ -1,5 +1,7 @@
 package cjs.DF_Plugin.pylon.beaconinteraction;
 
+import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.pylon.PylonType;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -54,7 +56,10 @@ public class PylonStructureManager {
         World world = pylonLoc.getWorld();
         if (world == null) return;
 
-        Material baseMaterial = (type == PylonType.MAIN_CORE) ? Material.DIAMOND_BLOCK : Material.IRON_BLOCK;
+        GameConfigManager configManager = DF_Main.getInstance().getGameConfigManager();
+        Material baseMaterial = (type == PylonType.MAIN_CORE) ?
+                configManager.getMainCoreBaseMaterial() :
+                configManager.getAuxiliaryCoreBaseMaterial();
 
         Location baseCenter = pylonLoc.clone().subtract(0, 1, 0);
         for (int x = -1; x <= 1; x++) {

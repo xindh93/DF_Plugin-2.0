@@ -21,7 +21,7 @@ public class GrabAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§b끌어오기";
+        return "§d끌어오기";
     }
 
     @Override
@@ -37,21 +37,6 @@ public class GrabAbility implements ISpecialAbility {
     public void onPlayerFish(PlayerFishEvent event, Player player, ItemStack item) {
         SpecialAbilityManager manager = DF_Main.getInstance().getSpecialAbilityManager();
         GameConfigManager config = DF_Main.getInstance().getGameConfigManager();
-
-        // 낚시찌를 던질 때 (FISHING state)
-        if (event.getState() == PlayerFishEvent.State.FISHING) {
-            if (event.getHook() != null) {
-                Vector velocity = event.getHook().getVelocity();
-
-                double velocityMultiplier = config.getConfig().getDouble("upgrade.special-abilities.grab.details.cast-velocity-multiplier", 3.0);
-                double maxVelocity = config.getConfig().getDouble("upgrade.special-abilities.grab.details.cast-max-velocity", 10.0);
-
-                // 속도를 증폭시키되, 최대치를 넘지 않도록 제한합니다.
-                velocity = velocity.normalize().multiply(Math.min(velocity.length() * velocityMultiplier, maxVelocity));
-                event.getHook().setVelocity(velocity);
-            }
-            return; // 속도만 조절하고 종료
-        }
 
         // 엔티티를 낚았을 때 (CAUGHT_ENTITY state)
         if (event.getState() == PlayerFishEvent.State.CAUGHT_ENTITY) {

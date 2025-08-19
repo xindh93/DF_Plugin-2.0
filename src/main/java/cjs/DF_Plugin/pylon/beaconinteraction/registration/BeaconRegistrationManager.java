@@ -22,7 +22,7 @@ public class BeaconRegistrationManager {
         // 2. 파일런 정보 등록
         String locationString = PluginUtils.serializeLocation(beacon.getLocation());
         clan.addPylonLocation(locationString, PylonType.MAIN_CORE);
-        plugin.getClanManager().getStorageManager().saveClan(clan);
+        plugin.getClanManager().saveClanData(clan);
 
         // 재설치 타이머가 있다면 취소
         plugin.getPylonManager().getReinstallManager().cancelReinstallTimer(player);

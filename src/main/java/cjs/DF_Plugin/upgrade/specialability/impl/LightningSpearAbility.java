@@ -32,12 +32,12 @@ public class LightningSpearAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§b뇌창";
+        return "§e뇌창";
     }
 
     @Override
     public String getDescription() {
-        return "§7[좌클릭]으로 공전하는 뇌창을 발사합니다. 5회 충전. 적중 시 스택이 쌓이며, 5스택 시 번개가 내리칩니다.";
+        return "§7공전하는 뇌창을 발사합니다. 5스택 시 번개가 내리칩니다.";
     }
 
     @Override
@@ -71,8 +71,8 @@ public class LightningSpearAbility implements ISpecialAbility {
     private final Map<UUID, BukkitTask> projectileReturnTasks = new ConcurrentHashMap<>();
 
     // --- Constants ---
-    private static final String PROJECTILE_META_KEY = "df_lightning_spear_projectile";
-    private static final String FLOATING_TRIDENT_META_KEY = "df_floating_trident";
+    public static final String PROJECTILE_META_KEY = "df_lightning_spear_projectile";
+    public static final String FLOATING_TRIDENT_META_KEY = "df_floating_trident";
 
     @Override
     public void onEquip(Player player, ItemStack item) {
@@ -141,90 +141,107 @@ public class LightningSpearAbility implements ISpecialAbility {
 
     @Override
     public void onProjectileLaunch(ProjectileLaunchEvent event, Player player, ItemStack item) {
-        // '뇌창' 모드에서는 플레이어가 직접 삼지창을 던지는 것을 막습니다.
-        // 이를 통해 '뇌창' 아이템을 잃어버리거나, 회수 시 인벤토리에 중복 생성되는 문제를 방지합니다.
-        event.setCancelled(true);
-        player.getWorld().playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.5f); // 효과음으로 피드백
+        // '뇌창' 모드에서는 플레이어가 직접 삼지창을 던질 수 있습니다.
+        // onDamageByEntity에서 이 삼지창을 식별할 수 있도록 메타데이터를 추가합니다.
+        if (event.getEntity() instanceof Trident trident) {
+            trident.setMetadata("trident_mode", new FixedMetadataValue(DF_Main.getInstance(), getInternalName()));
+        }
     }
 
     @Override
     public void onDamageByEntity(EntityDamageByEntityEvent event, Player player, ItemStack item) {
-        // 공전 중인 삼지창이 피격당하면, 모든 데미지, 소리, 이펙트를 취소합니다.
-        if (event.getEntity().hasMetadata(FLOATING_TRIDENT_META_KEY)) {
-            event.setCancelled(true);
-            return;
-        }
-
         if (!(event.getDamager() instanceof Trident trident) || !(event.getEntity() instanceof LivingEntity target)) {
             return;
         }
 
-        // 이 능력으로 생성된 발사체인지, 그리고 자기 자신을 공격하는지 확인합니다.
-        if (!trident.hasMetadata(PROJECTILE_META_KEY)) {
+        // 이 능력으로 생성된 특수 발사체인지(좌클릭), 또는 '뇌창' 모드에서 일반 투척된 삼지창인지(우클릭) 확인합니다.
+        boolean isSpecialProjectile = trident.hasMetadata(PROJECTILE_META_KEY);
+        boolean isVanillaThrowInMode = false;
+        if (trident.hasMetadata("trident_mode")) {
+            if ("lightning_spear".equals(trident.getMetadata("trident_mode").get(0).asString())) {
+                isVanillaThrowInMode = true;
+            }
+        }
+
+        // 이 능력과 관련 없는 삼지창이면 무시합니다.
+        if (!isSpecialProjectile && !isVanillaThrowInMode) {
             return;
         }
 
-        Object metadataValue = trident.getMetadata(PROJECTILE_META_KEY).get(0).value();
-        if (!(metadataValue instanceof UUID)) {
-            return;
+        // 시전자가 자기 자신을 공격하는 것을 방지합니다.
+        UUID ownerId = null;
+        if (isSpecialProjectile) {
+            Object metadataValue = trident.getMetadata(PROJECTILE_META_KEY).get(0).value();
+            if (metadataValue instanceof UUID) {
+                ownerId = (UUID) metadataValue;
+            }
+        } else if (trident.getShooter() instanceof Player) {
+            ownerId = ((Player) trident.getShooter()).getUniqueId();
         }
 
-        UUID ownerId = (UUID) metadataValue;
-        if (target.getUniqueId().equals(ownerId)) {
+        if (ownerId != null && target.getUniqueId().equals(ownerId)) {
             event.setCancelled(true);
             return;
         }
 
-        // 1. 데미지 처리
-        // 기본 삼지창 데미지는 그대로 적용하고, 추가 물리 피해를 줍니다.
-        double extraDamage = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.extra-physical-damage", 10.0);
-        event.setDamage(event.getDamage() + extraDamage);
-
-        // 2. 스택 처리
-        StackKey stackKey = new StackKey(target.getUniqueId(), player.getUniqueId());
-        StackInfo oldInfo = embeddedStacks.get(stackKey);
-        if (oldInfo != null) {
-            oldInfo.expiryTask().cancel(); // 이전 만료 타이머 취소
-        }
-        int newStackCount = 1;
-
-        if (oldInfo != null) {
-            newStackCount = oldInfo.count() + 1;
-        }
-
-        long stackDurationTicks = (long) (DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.stack-duration-seconds", 30.0) * 20);
-        final BukkitTask expiryTask = new BukkitRunnable() {
+        // '뇌창' 모드의 모든 공격은 무적 시간을 무시합니다.
+        new BukkitRunnable() {
             @Override
             public void run() {
-                StackInfo latestInfo = embeddedStacks.get(stackKey);
-                if (latestInfo != null && latestInfo.expiryTask().getTaskId() == this.getTaskId()) {
-                    embeddedStacks.remove(stackKey);
-                    target.getWorld().spawnParticle(Particle.LARGE_SMOKE, target.getEyeLocation(), 5, 0.2, 0.2, 0.2, 0.01);
+                if (target.isValid() && !target.isDead()) {
+                    target.setNoDamageTicks(0);
                 }
             }
-        }.runTaskLater(DF_Main.getInstance(), stackDurationTicks);
+        }.runTaskLater(DF_Main.getInstance(), 1L);
 
-        embeddedStacks.put(stackKey, new StackInfo(newStackCount, expiryTask));
+        // 특수 발사체(좌클릭)에만 추가 데미지 및 스택 효과를 적용합니다.
+        if (isSpecialProjectile) {
+            // 1. 데미지 처리
+            double extraDamage = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.extra-physical-damage", 10.0);
+            event.setDamage(event.getDamage() + extraDamage);
 
-        // 3. 스택 시각화 (노란색 파티클)
-        float particleSize = 0.6f + (newStackCount * 0.2f);
-        Particle.DustOptions dustOptions = new Particle.DustOptions(Color.YELLOW, particleSize);
-        target.getWorld().spawnParticle(Particle.DUST, target.getEyeLocation().add(0, 0.5, 0), 1, dustOptions);
-
-        if (newStackCount >= getMaxCharges()) {
-            // 5스택 달성: 최종 타격 및 초기화
-            StackInfo info = embeddedStacks.remove(stackKey);
-            if (info != null) {
-                info.expiryTask().cancel();
+            // 2. 스택 처리
+            StackKey stackKey = new StackKey(target.getUniqueId(), player.getUniqueId());
+            StackInfo oldInfo = embeddedStacks.get(stackKey);
+            if (oldInfo != null) {
+                oldInfo.expiryTask().cancel(); // 이전 만료 타이머 취소
             }
+            int newStackCount = (oldInfo != null) ? oldInfo.count() + 1 : 1;
 
-            double finalDamage = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.lightning-damage", 40.0);
-            target.getWorld().strikeLightningEffect(target.getLocation());
-            target.damage(finalDamage, player); // 물리 피해를 입힙니다.
+            long stackDurationTicks = (long) (DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.stack-duration-seconds", 30.0) * 20);
+            final BukkitTask expiryTask = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    StackInfo latestInfo = embeddedStacks.get(stackKey);
+                    if (latestInfo != null && latestInfo.expiryTask().getTaskId() == this.getTaskId()) {
+                        embeddedStacks.remove(stackKey);
+                        target.getWorld().spawnParticle(Particle.LARGE_SMOKE, target.getEyeLocation(), 5, 0.2, 0.2, 0.2, 0.01);
+                    }
+                }
+            }.runTaskLater(DF_Main.getInstance(), stackDurationTicks);
 
-            target.getWorld().playSound(target.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.7f, 1.4f);
-        } else {
-            target.getWorld().playSound(target.getLocation(), Sound.ENTITY_ARROW_HIT, 0.8f, 1.2f);
+            embeddedStacks.put(stackKey, new StackInfo(newStackCount, expiryTask));
+
+            // 3. 스택 시각화 (노란색 파티클)
+            float particleSize = 0.6f + (newStackCount * 0.2f);
+            Particle.DustOptions dustOptions = new Particle.DustOptions(Color.YELLOW, particleSize);
+            target.getWorld().spawnParticle(Particle.DUST, target.getEyeLocation().add(0, 0.5, 0), 1, dustOptions);
+
+            if (newStackCount >= getMaxCharges()) {
+                // 5스택 달성: 최종 타격 및 초기화
+                StackInfo info = embeddedStacks.remove(stackKey);
+                if (info != null) {
+                    info.expiryTask().cancel();
+                }
+
+                double finalDamage = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.lightning_spear.details.lightning-damage", 40.0);
+                target.getWorld().strikeLightningEffect(target.getLocation());
+                target.damage(finalDamage, player); // 물리 피해를 입힙니다.
+
+                target.getWorld().playSound(target.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.7f, 1.4f);
+            } else {
+                target.getWorld().playSound(target.getLocation(), Sound.ENTITY_ARROW_HIT, 0.8f, 1.2f);
+            }
         }
     }
 
@@ -260,9 +277,9 @@ public class LightningSpearAbility implements ISpecialAbility {
         UUID uuid = player.getUniqueId();
         List<Trident> tridents = floatingTridents.get(uuid);
 
-        // 1. 발사할 삼지창을 순차적으로 찾습니다.
+        // 1. 제거할 공전 삼지창을 찾습니다.
         int startIndex = nextFireIndex.getOrDefault(uuid, 0);
-        Trident tridentToFire = null;
+        Trident tridentToRemove = null;
         int fireIndex = -1;
 
         if (tridents != null) {
@@ -270,62 +287,57 @@ public class LightningSpearAbility implements ISpecialAbility {
                 int currentIndex = (startIndex + i) % tridents.size();
                 Trident currentTrident = tridents.get(currentIndex);
                 if (currentTrident != null && currentTrident.isValid()) {
-                    tridentToFire = currentTrident;
+                    tridentToRemove = currentTrident;
                     fireIndex = currentIndex;
                     break;
                 }
             }
         }
 
-        if (tridentToFire == null) {
+        if (tridentToRemove == null) {
             // 발사할 수 있는 유효한 삼지창이 없습니다.
             return;
         }
 
-        // 2. 상태를 업데이트하고 관상용 삼지창을 '활성화'합니다.
+        // 2. 상태 업데이트 및 공전 삼지창 제거
         setCharges(player, charges - 1);
         nextFireIndex.put(uuid, (fireIndex + 1) % getMaxCharges());
         tridents.set(fireIndex, null); // 공전 목록에서 제거
+        Location removalLocation = tridentToRemove.getLocation();
+        tridentToRemove.remove(); // 실제 엔티티 제거
 
-        // 관상용 삼지창을 실제 투사체로 전환
-        activateTrident(tridentToFire, player);
+        Trident projectile;
+        // 3. 완전히 새로운 삼지창 발사체를 생성합니다.
+        // [버그 수정] launchProjectile이 다른 리스너(삼지창 패시브)를 발동시키는 문제를 해결하기 위해,
+        // 발사 직전에 플레이어에게 임시 메타데이터를 설정하여 '뇌창' 발사임을 알립니다.
+        player.setMetadata("df_is_firing_special", new FixedMetadataValue(DF_Main.getInstance(), true));
+        try {
+            Vector direction = player.getEyeLocation().getDirection().normalize();
+            projectile = player.launchProjectile(Trident.class, direction.multiply(3.0));
 
-        // 3. 발사 효과 및 귀환 처리
-        player.getWorld().playSound(tridentToFire.getLocation(), Sound.ITEM_TRIDENT_THROW, 1.0f, 1.5f);
-        player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, tridentToFire.getLocation(), 8, 0.1, 0.1, 0.1, 0.05);
+            // 발사체 속성 설정
+            // launchProjectile이 shooter를 자동으로 설정하지만, 명시적으로 다시 설정하여 확실히 합니다.
+            projectile.setShooter(player);
+            projectile.setMetadata(PROJECTILE_META_KEY, new FixedMetadataValue(DF_Main.getInstance(), player.getUniqueId()));
+            // launchProjectile이 설정하는 기본값을 필요에 따라 덮어씁니다.
+            projectile.setGravity(true);
+            projectile.setPierceLevel((byte) 0);
+            projectile.setLoyaltyLevel(3);
+            projectile.setPickupStatus(Trident.PickupStatus.DISALLOWED);
+        } finally {
+            // 이벤트 처리가 끝난 후 메타데이터를 확실히 제거합니다.
+            player.removeMetadata("df_is_firing_special", DF_Main.getInstance());
+        }
 
-        trackAndHandleReturn(tridentToFire, player);
+        // 추적 목록에 추가
+        activeProjectiles.computeIfAbsent(player.getUniqueId(), k -> new HashSet<>()).add(projectile);
+
+        // 4. 발사 효과 및 귀환 처리
+        player.getWorld().playSound(removalLocation, Sound.ITEM_TRIDENT_THROW, 1.0f, 1.5f);
+        player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, removalLocation, 8, 0.1, 0.1, 0.1, 0.05);
+
+        trackAndHandleReturn(projectile, player);
     }
-
-    /**
-     * 관상용 삼지창을 실제 투사체로 '활성화'합니다.
-     * @param trident 활성화할 관상용 삼지창
-     * @param player 발사자
-     */
-    private void activateTrident(Trident trident, Player player) {
-
-        // 2. 메타데이터 및 물리 속성 변경
-        trident.removeMetadata(FLOATING_TRIDENT_META_KEY, DF_Main.getInstance());
-        trident.setMetadata(PROJECTILE_META_KEY, new FixedMetadataValue(DF_Main.getInstance(), player.getUniqueId()));
-        trident.setGravity(true);
-        trident.setShooter(player);
-        trident.setPierceLevel((byte) 0); // 관통 효과 제거
-        trident.setLoyaltyLevel(3); // 충성 인챈트 효과 부여
-        trident.setPickupStatus(Trident.PickupStatus.DISALLOWED); // [핵심 수정] 돌아온 삼지창을 획득하지 못하도록 설정
-
-        // 3. 발사
-        Location eyeLoc = player.getEyeLocation();
-        Vector direction = eyeLoc.getDirection().normalize();
-        // 발사 위치를 플레이어의 눈 앞에서 1.5블록 떨어진 곳으로 조정하여,
-        // 발사 직후 플레이어 자신 또는 다른 공전 삼지창과 충돌하는 현상을 방지합니다.
-        Location spawnLoc = eyeLoc.clone().add(direction.clone().multiply(1.5));
-        trident.teleport(spawnLoc);
-        trident.setVelocity(direction.multiply(3.0)); // 순간이동 후 속도 적용
-
-        // 4. 추적 목록에 추가
-        activeProjectiles.computeIfAbsent(player.getUniqueId(), k -> new HashSet<>()).add(trident);
-    }
-
 
     private void trackAndHandleReturn(Trident trident, Player player) {
         BukkitTask returnTask = new BukkitRunnable() {
@@ -353,6 +365,17 @@ public class LightningSpearAbility implements ISpecialAbility {
                 // 삼지창이 어떤 이유로든 사라졌다면 (예: 선인장, 용암), 작업만 종료합니다.
                 if (!trident.isValid()) {
                     // 이 경우, 충전량은 자연적으로 회복되지 않습니다. 발사체가 소멸된 것입니다.
+                    cleanupAndCancel();
+                    return;
+                }
+
+                // [오류 수정] 플레이어와 삼지창이 다른 월드에 있을 경우 발생하는 예외를 방지합니다.
+                if (!trident.getWorld().equals(player.getWorld())) {
+                    // 다른 월드에 있으므로 삼지창을 회수할 수 없습니다.
+                    // 발사체는 제거하고, 충전량은 돌려주지 않습니다.
+                    if (trident.isValid()) {
+                        trident.remove();
+                    }
                     cleanupAndCancel();
                     return;
                 }
@@ -534,20 +557,25 @@ public class LightningSpearAbility implements ISpecialAbility {
 
             Location targetLoc = playerLoc.clone().add(pos).add(0, yOffset, 0);
 
-            // --- 하이브리드 이동 로직 (블록 관통 효과) ---
-            Vector velocity = targetLoc.toVector().subtract(trident.getLocation().toVector());
-            Location nextTickLocation = trident.getLocation().add(velocity.clone().multiply(0.4));
+            // [버그 수정] 공전 삼지창이 블록에 부딪혀 궤도를 이탈하는 문제를 해결합니다.
+            // 1. 삼지창이 궤도에서 너무 멀리 벗어났는지 확인합니다. (충돌 후 복구)
+            double maxAllowedDistanceSq = (currentRadius + 3.0) * (currentRadius + 3.0); // 궤도 반지름 + 버퍼
+            boolean isStray = trident.getLocation().distanceSquared(player.getEyeLocation()) > maxAllowedDistanceSq;
 
-            // 다음 위치가 블록 내부인지 확인
-            if (nextTickLocation.getBlock().getType().isSolid()) {
-                // 충돌이 예상되면 순간이동으로 위치를 보정하여 관통 효과를 냅니다.
+            // 2. 목표 지점이 블록에 막혀있는지 확인합니다. (충돌 예방)
+            boolean isTargetObstructed = targetLoc.getBlock().getType().isSolid();
+
+            if (isStray || isTargetObstructed) {
+                // 삼지창이 길을 잃었거나 목표 지점이 막힌 경우, 순간이동으로 위치를 강제 보정합니다.
                 trident.teleport(targetLoc);
                 trident.setVelocity(new Vector(0, 0, 0)); // 순간이동 후 속도 초기화
             } else {
-                // 충돌이 없으면 setVelocity로 부드럽게 이동
+                // 안전한 경우, setVelocity로 부드럽게 이동하여 시각적 부드러움을 유지합니다.
+                Vector velocity = targetLoc.toVector().subtract(trident.getLocation().toVector());
                 double correctionStrength = 0.4;
                 Vector finalVelocity = velocity.multiply(correctionStrength);
 
+                // 속도가 너무 빨라지는 것을 방지합니다.
                 if (finalVelocity.lengthSquared() > 4.0) {
                     finalVelocity.normalize().multiply(2.0);
                 }

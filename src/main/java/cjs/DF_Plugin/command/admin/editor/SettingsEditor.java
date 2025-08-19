@@ -30,7 +30,7 @@ public class SettingsEditor {
         int colorIndex = 0;
 
         sendCategoryButton(player, "사망 타이머", "death", "§e사망 시 부활 대기 관련 설정을 엽니다.", colors[colorIndex++ % 2]);
-        sendCategoryButton(player, "파일런 기능", "pylon", "§e파일런 관련 세부 기능 설정을 엽니다.", colors[colorIndex++ % 2]);
+        sendCategoryButton(player, "파일런 설정", "pylon", "§e파일런 관련 세부 기능 설정을 엽니다.", colors[colorIndex++ % 2]);
         sendCategoryButton(player, "월드 보더", "worldborder", "§e월드 보더 크기 및 활성화 설정을 엽니다.", colors[colorIndex++ % 2]);
         sendCategoryButton(player, "유틸리티", "utility", "§e게임 편의성 관련 설정을 엽니다.", colors[colorIndex++ % 2]);
         sendCategoryButton(player, "OP 인챈트", "openchant", "§e밸런스에 영향을 주는 인챈트 활성화 여부를 설정합니다.", colors[colorIndex++ % 2]);
@@ -56,13 +56,16 @@ public class SettingsEditor {
     }
 
     /**
-     * 파일런 기능 설정 UI를 엽니다.
+     * 파일런 설정 UI를 엽니다.
      */
-    public void openPylonFeaturesSettings(Player player) {
-        player.sendMessage("§e======== §f[파일런 기능 설정] §e========");
+    public void openPylonSettings(Player player) {
+        player.sendMessage("§e======== §f[파일런 설정] §e========");
+        sendNumberSetting(player, "가문 최대 인원", "pylon.recruitment.max-members", 1);
+        sendStringToggleSetting(player, "팀원 모집 방식", "pylon.recruitment.mode", "select", "roulette", "§b선택", "§d룰렛");
+        sendBooleanSetting(player, "기본 스탯 플레이어 모집", "pylon.recruitment.include-default-stats-players");
         sendBooleanSetting(player, "파일런 창고", "pylon.features.storage");
         sendBooleanSetting(player, "귀환 주문서", "pylon.features.return-scroll");
-        sendBooleanSetting(player, "멀티 코어", "pylon.features.multi-core");
+        sendBooleanSetting(player, "보조 코어", "pylon.features.multi-core");
         sendBooleanSetting(player, "클랜 지옥", "pylon.features.clan-nether");
         player.sendMessage("§e===================================");
         sendBackButton(player);
@@ -90,11 +93,11 @@ public class SettingsEditor {
         sendInvertedBooleanSetting(player, "팬텀 생성", "world.rules.phantom-disabled");
         sendInvertedBooleanSetting(player, "좌표 막대 표시", "world.rules.locator-bar-disabled");
         sendBooleanSetting(player, "마법 황금사과 조합", "items.notched-apple-recipe");
-        sendInvertedBooleanSetting(player, "불사의 토템 사용", "world.rules.totem-disabled");
+        sendTimeSettingInMinutes(player, "불사의 토템 쿨타임(분)", "world.rules.totem-cooldown-seconds", 1);
         sendInvertedBooleanSetting(player, "엔더 상자 사용", "world.rules.enderchest-disabled");
         sendNumberSetting(player, "포션 소지 제한", "world.rules.potion-limit", 1);
         sendInvertedBooleanSetting(player, "전체 채팅 사용", "utility.chat-disabled");
-        sendBooleanSetting(player, "보급 활성화", "events.supply-drop-enabled");
+        sendBooleanSetting(player, "차원의 균열 활성화", "events.rift.enabled");
         player.sendMessage("§e===================================");
         sendBackButton(player);
     }
@@ -172,29 +175,28 @@ public class SettingsEditor {
     // --- UI 컴포넌트 생성 메소드 ---
 
     private void sendTimeSettingInMinutes(Player player, String name, String key, int incrementInMinutes) {
-        int valueInSeconds = configManager.getConfig().getInt(key);
-        int valueInMinutes = valueInSeconds / 60;
+        int valueInMinutes = configManager.getConfig().getInt(key);
 
         TextComponent message = new TextComponent("§7- " + name + ": ");
 
         TextComponent minusButton = new TextComponent("§c[-]");
-        int newMinusValueInSeconds = Math.max(0, (valueInMinutes - incrementInMinutes) * 60);
-        minusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + newMinusValueInSeconds));
+        int newMinusValue = Math.max(1, valueInMinutes - incrementInMinutes);
+        minusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + newMinusValue));
         minusButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§c-" + incrementInMinutes + "분 감소").create()));
         message.addExtra(minusButton);
 
         message.addExtra(" ");
 
         TextComponent valueComponent = new TextComponent("§b[" + valueInMinutes + "]");
-        valueComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/df admin set " + key + " "));
-        valueComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§e클릭하여 직접 초 단위로 값 입력").create()));
+        valueComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/df admin set " + key + " " + valueInMinutes));
+        valueComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§e클릭하여 직접 분 단위로 값 입력").create()));
         message.addExtra(valueComponent);
 
         message.addExtra(" ");
 
         TextComponent plusButton = new TextComponent("§a[+]");
-        int newPlusValueInSeconds = (valueInMinutes + incrementInMinutes) * 60;
-        plusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + newPlusValueInSeconds));
+        int newPlusValue = valueInMinutes + incrementInMinutes;
+        plusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + newPlusValue));
         plusButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§a+" + incrementInMinutes + "분 증가").create()));
         message.addExtra(plusButton);
 
@@ -206,6 +208,20 @@ public class SettingsEditor {
         button.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin settings " + command));
         button.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(hoverText).create()));
         player.spigot().sendMessage(button);
+    }
+
+    private void sendStringToggleSetting(Player player, String name, String key, String option1, String option2, String display1, String display2) {
+        String value = configManager.getConfig().getString(key, option1);
+        String displayValue = value.equalsIgnoreCase(option1) ? display1 : display2;
+        String nextValue = value.equalsIgnoreCase(option1) ? option2 : option1;
+        String command = "/df admin set " + key + " " + nextValue;
+
+        TextComponent message = new TextComponent("§7- " + name + ": ");
+        TextComponent valueComponent = new TextComponent("[" + displayValue + "§r]");
+        valueComponent.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command));
+        valueComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§e클릭하여 토글").create()));
+        message.addExtra(valueComponent);
+        player.spigot().sendMessage(message);
     }
 
     private void sendNumberSetting(Player player, String name, String key, int increment) {

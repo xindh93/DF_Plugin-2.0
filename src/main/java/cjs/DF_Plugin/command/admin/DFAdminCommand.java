@@ -50,7 +50,7 @@ public class DFAdminCommand implements CommandExecutor {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (args.length == 0) {
             sender.sendMessage("§c사용법: /df admin <subcommand>");
-            sender.sendMessage("§c사용 가능한 명령어: gamemode, settings, set, clan, register, controlender, unban, game, getitem, getweapon, statview, supplydrop");
+            sender.sendMessage("§c사용 가능한 명령어: gamemode, settings, set, clan, register, controlender, unban, game, getitem, getweapon, statview, rift");
 
             return true;
         }
@@ -72,7 +72,7 @@ public class DFAdminCommand implements CommandExecutor {
             case "getitem" -> handleGetItemCommand(sender, subArgs);
             case "getweapon" -> handleGetWeaponCommand(sender, subArgs);
             case "statview" -> handleStatViewCommand(sender, subArgs);
-            case "supplydrop" -> handleAdminSupplyDropCommand(sender, subArgs);
+            case "rift" -> handleAdminRiftCommand(sender, subArgs);
             default -> sender.sendMessage("§c알 수 없는 명령어입니다.");
         }
 
@@ -121,7 +121,7 @@ public class DFAdminCommand implements CommandExecutor {
 
         switch (category) {
             case "death" -> settingsEditor.openDeathTimerSettings(player);
-            case "pylon" -> settingsEditor.openPylonFeaturesSettings(player);
+            case "pylon" -> settingsEditor.openPylonSettings(player);
             case "worldborder" -> settingsEditor.openWorldBorderSettings(player);
             case "utility" -> settingsEditor.openUtilitySettings(player);
             case "openchant" -> settingsEditor.openOpEnchantSettings(player);
@@ -155,32 +155,22 @@ public class DFAdminCommand implements CommandExecutor {
             return;
         }
 
-        if (args.length < 1) {
-            player.sendMessage("§c사용법: /df admin register <all|플레이어이름>");
+        if (args.length != 0) {
+            player.sendMessage("§c사용법: /df admin register");
             return;
         }
 
-        String mode = args[0];
-        if (mode.equalsIgnoreCase("all")) {
-            statsManager.startMassRegistration(player);
-        } else {
-            OfflinePlayer target = Bukkit.getOfflinePlayer(mode);
-            if (!target.hasPlayedBefore() && !target.isOnline()) {
-                player.sendMessage("§c'" + mode + "' 플레이어는 이 서버에 접속한 기록이 없습니다.");
-                return;
-            }
-            statsManager.startSingleRegistration(player, target.getUniqueId());
-        }
+        // 등록되지 않은 모든 플레이어를 대상으로, 접속 중인 모든 플레이어가 평가를 시작합니다.
+        statsManager.startMassRegistration(player);
     }
 
     private void handleSetStatCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) return;
-        // 사용법: /df admin setstat <플레이어이름> <스탯종류> <값>
-        if (args.length < 3) return;
+        // 사용법: /df admin setstat <스탯종류> <값>
+        if (args.length < 2) return;
         try {
-            // args[0]은 targetName이지만, StatsManager는 세션 관리자인 player를 기준으로 처리하므로 무시합니다.
-            StatType type = StatType.valueOf(args[1].toUpperCase());
-            int value = Integer.parseInt(args[2]);
+            StatType type = StatType.valueOf(args[0].toUpperCase());
+            int value = Integer.parseInt(args[1]);
             statsManager.updateStatInSession(player, type, value);
         } catch (Exception e) {
             // 채팅 클릭으로 발생하는 명령어이므로, 오류 메시지를 보내지 않습니다.
@@ -189,13 +179,17 @@ public class DFAdminCommand implements CommandExecutor {
 
     private void handleConfirmStatCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) return;
-        // 사용법: /df admin confirmstat <플레이어이름>
-        // args[0]은 targetName이지만, StatsManager는 세션 관리자인 player를 기준으로 처리하므로 무시합니다.
+        // 사용법: /df admin confirmstat
         statsManager.confirmAndNext(player);
     }
 
     private void handleCancelStatCommand(CommandSender sender) {
         if (!(sender instanceof Player player)) return;
+        // 평가 취소는 OP 권한을 가진 관리자만 사용할 수 있습니다.
+        if (!player.isOp()) {
+            player.sendMessage("§c이 명령어를 사용할 권한이 없습니다.");
+            return;
+        }
         statsManager.endMassRegistration(player);
     }
 
@@ -357,11 +351,9 @@ public class DFAdminCommand implements CommandExecutor {
         switch (action) {
             case "start" -> {
                 plugin.getGameStartManager().startGame();
-                sender.sendMessage("§a게임을 시작했습니다.");
             }
             case "stop" -> {
                 plugin.getGameStartManager().stopGame();
-                sender.sendMessage("§a게임을 종료했습니다.");
             }
             default -> sender.sendMessage("§c알 수 없는 명령어입니다. 사용법: /df admin game <start|stop>");
         }
@@ -449,18 +441,37 @@ public class DFAdminCommand implements CommandExecutor {
         playerEvalGuiManager.openEvalGui(admin, target);
     }
 
-    private void handleAdminSupplyDropCommand(CommandSender sender, String[] adminSubArgs) {
-        if (adminSubArgs.length == 0 || !adminSubArgs[0].equalsIgnoreCase("start")) {
-            sender.sendMessage("§c사용법: /df admin supplydrop start");
+    private void handleAdminRiftCommand(CommandSender sender, String[] adminSubArgs) {
+        if (adminSubArgs.length == 0) {
+            sender.sendMessage("§c사용법: /df admin rift <start|toggle|status>");
             return;
         }
 
-        if (plugin.getSupplyDropManager().isEventActive()) {
-            sender.sendMessage("§c이미 보급 이벤트가 진행 중입니다.");
-            return;
+        String action = adminSubArgs[0].toLowerCase();
+        switch (action) {
+            case "start" -> {
+                if (plugin.getRiftManager().isEventActive()) {
+                    sender.sendMessage("§c이미 차원의 균열 이벤트가 진행 중입니다.");
+                    return;
+                }
+                plugin.getRiftScheduler().startEventNow();
+                sender.sendMessage("§a차원의 균열 이벤트를 강제로 시작했습니다.");
+            }
+            case "toggle" -> {
+                boolean currentStatus = configManager.getConfig().getBoolean("events.rift.enabled", true);
+                boolean newStatus = !currentStatus;
+                configManager.getConfig().set("events.rift.enabled", newStatus);
+                configManager.save();
+                sender.sendMessage("§a차원의 균열 이벤트 활성화 상태를 " + (newStatus ? "§a활성화" : "§c비활성화") + "§a(으)로 변경했습니다.");
+            }
+            case "status" -> {
+                boolean isEnabled = configManager.getConfig().getBoolean("events.rift.enabled", true);
+                boolean isActive = plugin.getRiftManager().isEventActive();
+                sender.sendMessage("§e--- 차원의 균열 이벤트 상태 ---");
+                sender.sendMessage("§7활성화 여부: " + (isEnabled ? "§a활성화" : "§c비활성화"));
+                sender.sendMessage("§7현재 진행 중: " + (isActive ? "§a예" : "§c아니오"));
+            }
+            default -> sender.sendMessage("§c알 수 없는 명령어입니다. 사용법: /df admin rift <start|toggle|status>");
         }
-
-        plugin.getSupplyDropScheduler().startEventNow();
-        sender.sendMessage("§a보급 이벤트를 강제로 시작했습니다.");
     }
 }

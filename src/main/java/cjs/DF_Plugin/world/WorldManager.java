@@ -1,4 +1,4 @@
- package cjs.DF_Plugin.world;
+package cjs.DF_Plugin.world;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
@@ -209,7 +209,7 @@ public class WorldManager {
     public void teleportPlayerToSafety(Player player) {
         Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
         if (clan != null && !clan.getPylonLocations().isEmpty()) {
-            String pylonLocStr = clan.getPylonLocations().stream().findFirst().orElse(null);
+            String pylonLocStr = clan.getPylonLocations().keySet().stream().findFirst().orElse(null);
             if (pylonLocStr != null) {
                 Location pylonLoc = PluginUtils.deserializeLocation(pylonLocStr);
                 if (pylonLoc != null && pylonLoc.getWorld() != null) {

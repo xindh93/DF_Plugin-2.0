@@ -5,6 +5,7 @@ import cjs.DF_Plugin.enchant.MagicStone;
 import cjs.DF_Plugin.items.UpgradeItems;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.WorldCreator;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
@@ -24,17 +25,20 @@ import java.util.logging.Level;
 public class EndEventManager {
 
     private final DF_Main plugin;
-    private boolean isEndOpen;
-    private long scheduledOpenTime = -1;
+
+    private enum State { CLOSED, SCHEDULED, OPEN, COLLAPSING }
+    private State currentState = State.CLOSED;
+
+    private long nextEventTime = -1; // For SCHEDULED state
+    private long collapseFinishTime = -1; // For COLLAPSING state
+
     private BukkitTask openTask;
     private BukkitTask collapseUpdateTask;
     private BossBar collapseBossBar;
-    private long collapseEndTime = -1;
 
-    private static final String CONFIG_PATH_IS_OPEN = "end-event.is-open";
-    private static final String CONFIG_PATH_SCHEDULED_TIME = "end-event.scheduled-open-time";
-    private static final String CONFIG_PATH_COLLAPSE_TIME = "end-event.collapse-delay-minutes";
-    private static final String CONFIG_PATH_COLLAPSE_END_TIME = "end-event.collapse-end-time";
+    private static final String CONFIG_PATH_STATE = "events.end.state";
+    private static final String CONFIG_PATH_NEXT_EVENT_TIME = "events.end.next-event-time";
+    private static final String CONFIG_PATH_COLLAPSE_FINISH_TIME = "events.end.collapse-finish-time";
 
     public EndEventManager(DF_Main plugin) {
         this.plugin = plugin;
@@ -42,57 +46,76 @@ public class EndEventManager {
     }
 
     /**
-     * 서버 시작 시 config.yml에서 엔드 이벤트의 상태(개방, 예약, 붕괴)를 불러옵니다.
+     * 서버 시작 시 event_data.yml에서 엔드 이벤트의 상태(개방, 예약, 붕괴)를 불러옵니다.
      */
     public void loadState() {
-        this.isEndOpen = plugin.getGameConfigManager().getConfig().getBoolean(CONFIG_PATH_IS_OPEN, false);
-        this.scheduledOpenTime = plugin.getGameConfigManager().getConfig().getLong(CONFIG_PATH_SCHEDULED_TIME, -1);
-        this.collapseEndTime = plugin.getGameConfigManager().getConfig().getLong(CONFIG_PATH_COLLAPSE_END_TIME, -1);
+        FileConfiguration config = plugin.getEventDataManager().getConfig();
+        this.currentState = State.valueOf(config.getString(CONFIG_PATH_STATE, "CLOSED"));
+        this.nextEventTime = config.getLong(CONFIG_PATH_NEXT_EVENT_TIME, -1);
+        this.collapseFinishTime = config.getLong(CONFIG_PATH_COLLAPSE_FINISH_TIME, -1);
 
-        if (collapseEndTime != -1) {
-            long remainingMillis = collapseEndTime - System.currentTimeMillis();
-            if (remainingMillis <= 0) {
-                // 서버가 꺼져있는 동안 붕괴 시간이 지났으므로, 즉시 닫습니다.
-                closeAndResetEnd();
-            } else {
-                // 붕괴 카운트다운을 다시 시작합니다.
-                long totalDurationMinutes = plugin.getGameConfigManager().getConfig().getLong(CONFIG_PATH_COLLAPSE_TIME, 10);
-                Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔드 월드 붕괴가 재개됩니다! 서둘러 탈출하세요!");
-                startCollapseCountdown(totalDurationMinutes);
-            }
-        } else if (scheduledOpenTime != -1) {
-            long delayMillis = scheduledOpenTime - System.currentTimeMillis();
-            if (delayMillis <= 0) {
-                // 서버가 꺼져있는 동안 열릴 시간이었으므로, 지금 바로 엽니다.
-                openEnd(false);
-            } else {
-                // 개방 예약을 다시 설정합니다.
-                scheduleOpen(TimeUnit.MILLISECONDS.toMinutes(delayMillis), false);
-            }
+        switch (currentState) {
+            case SCHEDULED:
+                long delayMillis = nextEventTime - System.currentTimeMillis();
+                if (delayMillis <= 0) {
+                    openEnd(false);
+                } else {
+                    scheduleOpen(TimeUnit.MILLISECONDS.toMinutes(delayMillis), false);
+                }
+                break;
+            case COLLAPSING:
+                long remainingMillis = collapseFinishTime - System.currentTimeMillis();
+                if (remainingMillis <= 0) {
+                    closeAndResetEnd();
+                } else {
+                    long totalDurationMinutes = plugin.getGameConfigManager().getConfig().getLong("end-event.collapse-delay-minutes", 10);
+                    Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔드 월드 붕괴가 재개됩니다! 서둘러 탈출하세요!");
+                    startCollapseCountdown(totalDurationMinutes, collapseFinishTime);
+                }
+                break;
+            default:
+                // OPEN, CLOSED 상태는 별도 조치 없음
+                break;
         }
     }
 
     private void saveState() {
-        plugin.getGameConfigManager().getConfig().set(CONFIG_PATH_IS_OPEN, isEndOpen);
-        plugin.getGameConfigManager().getConfig().set(CONFIG_PATH_SCHEDULED_TIME, scheduledOpenTime);
-        plugin.getGameConfigManager().getConfig().set(CONFIG_PATH_COLLAPSE_END_TIME, collapseEndTime);
-        plugin.getGameConfigManager().save();
+        FileConfiguration config = plugin.getEventDataManager().getConfig();
+        config.set(CONFIG_PATH_STATE, currentState.name());
+        config.set(CONFIG_PATH_NEXT_EVENT_TIME, nextEventTime);
+        config.set(CONFIG_PATH_COLLAPSE_FINISH_TIME, collapseFinishTime);
+        plugin.getEventDataManager().saveConfig();
     }
 
     public void openEnd(boolean broadcast) {
-        if (isEndOpen) return;
+        if (currentState == State.OPEN) return;
 
         // 엔드를 열기 전에 항상 월드를 초기화하여 새로운 경험을 제공합니다.
         plugin.getLogger().info("Resetting The End before opening...");
         plugin.getWorldManager().resetWorld("world_the_end");
+
+        // 월드가 로드되었는지 확인하고, 그렇지 않으면 생성합니다.
+        World endWorld = Bukkit.getWorld("world_the_end");
+        if (endWorld == null) {
+            plugin.getLogger().info("The End world is not loaded, creating it now...");
+            endWorld = new WorldCreator("world_the_end")
+                    .environment(World.Environment.THE_END)
+                    .createWorld();
+            if (endWorld == null) {
+                plugin.getLogger().severe("엔드 월드를 생성하는 데 실패했습니다!");
+                Bukkit.broadcastMessage("§c[오류] 엔드 월드를 생성하는 데 실패했습니다. 서버 관리자에게 문의하세요.");
+                return;
+            }
+        }
 
         if (openTask != null) {
             openTask.cancel();
             openTask = null;
         }
 
-        this.isEndOpen = true;
-        this.scheduledOpenTime = -1;
+        this.currentState = State.OPEN;
+        this.nextEventTime = -1;
+        this.collapseFinishTime = -1;
         saveState();
 
         if (broadcast) {
@@ -115,8 +138,9 @@ public class EndEventManager {
             openTask.cancel();
         }
 
-        this.isEndOpen = false;
-        this.scheduledOpenTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(minutes);
+        this.currentState = State.SCHEDULED;
+        this.nextEventTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(minutes);
+        this.collapseFinishTime = -1;
         saveState();
 
         if (broadcast) {
@@ -137,18 +161,17 @@ public class EndEventManager {
     }
 
     public boolean isEndOpen() {
-        return isEndOpen;
+        return currentState == State.OPEN;
     }
 
     /**
      * 엔더 드래곤 처치 시 보상 지급 및 월드 붕괴 절차를 시작합니다.
      */
     public void triggerDragonDefeatSequence() {
-        if (!isEndOpen) return;
+        if (currentState != State.OPEN) return;
 
-        // 드래곤이 죽는 즉시 엔드를 닫아 더 이상의 진입을 막습니다.
-        // 붕괴 카운트다운은 계속 진행됩니다.
-        this.isEndOpen = false;
+        // 드래곤이 죽으면 붕괴 상태로 전환됩니다. isEndOpen은 false가 되어 더 이상 진입할 수 없습니다.
+        this.currentState = State.COLLAPSING;
         Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔더 드래곤이 쓰러져 엔드 포탈이 닫혔습니다!");
 
         World endWorld = Bukkit.getWorld("world_the_end");
@@ -159,19 +182,19 @@ public class EndEventManager {
             plugin.getLogger().log(Level.WARNING, "엔드 월드가 로드되지 않아 보상을 지급할 수 없습니다.");
         }
 
-        long delayMinutes = plugin.getGameConfigManager().getConfig().getLong(CONFIG_PATH_COLLAPSE_TIME, 10);
+        long delayMinutes = plugin.getGameConfigManager().getConfig().getLong("end-event.collapse-delay-minutes", 10);
         Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔드 월드가 " + delayMinutes + "분 뒤 붕괴를 시작합니다! 서둘러 탈출하세요!");
 
-        this.collapseEndTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
+        this.collapseFinishTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
         saveState();
-        startCollapseCountdown(delayMinutes);
+        startCollapseCountdown(delayMinutes, this.collapseFinishTime);
     }
 
     /**
      * 붕괴 카운트다운과 보스바 업데이트를 시작합니다.
      * @param totalDurationMinutes 붕괴까지 총 소요 시간(분)
      */
-    private void startCollapseCountdown(long totalDurationMinutes) {
+    private void startCollapseCountdown(long totalDurationMinutes, long finishTime) {
         if (collapseUpdateTask != null) {
             collapseUpdateTask.cancel();
         }
@@ -192,7 +215,7 @@ public class EndEventManager {
         collapseUpdateTask = new BukkitRunnable() {
             @Override
             public void run() {
-                long remainingMillis = collapseEndTime - System.currentTimeMillis();
+                long remainingMillis = finishTime - System.currentTimeMillis();
 
                 if (remainingMillis <= 0) {
                     closeAndResetEnd();
@@ -229,9 +252,9 @@ public class EndEventManager {
             }
         }
 
-        this.isEndOpen = false;
-        this.scheduledOpenTime = -1;
-        this.collapseEndTime = -1;
+        this.currentState = State.CLOSED;
+        this.nextEventTime = -1;
+        this.collapseFinishTime = -1;
         saveState();
 
         Bukkit.broadcastMessage("§5[엔드 이벤트] §4엔드 월드가 붕괴하여 닫혔습니다.");
@@ -249,7 +272,7 @@ public class EndEventManager {
      * @return 붕괴 중이면 true
      */
     public boolean isCollapsing() {
-        return this.collapseEndTime != -1;
+        return this.currentState == State.COLLAPSING;
     }
 
     /**

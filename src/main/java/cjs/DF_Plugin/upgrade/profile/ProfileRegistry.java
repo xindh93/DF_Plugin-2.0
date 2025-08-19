@@ -28,6 +28,7 @@ public class ProfileRegistry {
         profiles.put(Material.CROSSBOW, new CrossbowProfile());
         profiles.put(Material.FISHING_ROD, new FishingRodProfile());
         profiles.put(Material.TRIDENT, new TridentProfile());
+        profiles.put(Material.SHIELD, new ShieldProfile());
 
         // 방어구
         registerArmorSet("HELMET", HelmetProfile::new);

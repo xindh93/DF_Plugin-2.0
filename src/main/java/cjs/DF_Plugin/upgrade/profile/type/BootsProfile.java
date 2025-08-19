@@ -1,14 +1,17 @@
 package cjs.DF_Plugin.upgrade.profile.type;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
 import cjs.DF_Plugin.upgrade.specialability.impl.DoubleJumpAbility;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,11 +20,13 @@ import java.util.UUID;
 public class BootsProfile implements IUpgradeableProfile {
 
     private static final ISpecialAbility DOUBLE_JUMP_ABILITY = new DoubleJumpAbility();
+    private static final UUID ARMOR_MODIFIER_UUID = UUID.fromString("845DB27C-C624-495F-8C9F-6020A9A58B6B");
+    private static final UUID ARMOR_TOUGHNESS_MODIFIER_UUID = UUID.fromString("D8499B04-0E66-4726-AB29-64469D734E0D");
+    private static final UUID KNOCKBACK_RESISTANCE_MODIFIER_UUID = UUID.fromString("556E1665-8B10-40C8-8F9D-CF9B1667F295");
+    private static final UUID SPEED_MODIFIER_UUID = UUID.fromString("9F3D476D-C118-4544-8365-64846904B48E");
 
     @Override
     public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
-        final String ATTRIBUTE_NAME = "upgrade.movement_speed";
-
         // 1. 아이템의 모든 관련 속성을 초기화합니다.
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR);
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS);
@@ -32,13 +37,38 @@ public class BootsProfile implements IUpgradeableProfile {
         applyBaseArmorAttributes(item.getType(), meta);
 
         // 3. 새로운 강화 속성(이동 속도)을 계산하고 적용합니다.
-        double speedBonusPerLevel = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.boots.speed-multiplier-per-level", 0.05);
-        double totalValue = speedBonusPerLevel * level;
-
-        if (totalValue > 0) {
-            AttributeModifier mod = new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "upgrade_movement_speed"), totalValue, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
-            meta.addAttributeModifier(Attribute.GENERIC_MOVEMENT_SPEED, mod);
+        double speedBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.boots.speed-multiplier-per-level", 0.05) * level;
+        if (speedBonus > 0) {
+            AttributeModifier speedModifier = new AttributeModifier(SPEED_MODIFIER_UUID, "upgrade.movementSpeed", speedBonus, AttributeModifier.Operation.MULTIPLY_SCALAR_1, EquipmentSlot.FEET);
+            meta.addAttributeModifier(Attribute.GENERIC_MOVEMENT_SPEED, speedModifier);
         }
+
+        // --- 로어 표시 수정 ---
+        // 4. 기본 속성 표시(녹색 줄)를 숨깁니다.
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+
+        // 5. 강화 보너스 로어를 추가합니다.
+        lore.removeIf(line -> line.contains("추가 이동 속도:"));
+        if (speedBonus > 0) {
+            lore.add("");
+            lore.add("§b추가 이동 속도: +" + String.format("%.0f", speedBonus * 100) + "%");
+        }
+
+        // 6. 기존에 있을 수 있는 바닐라 스타일 로어를 먼저 제거합니다.
+        lore.removeIf(line -> line.contains("방어") || line.contains("방어 강도") || line.contains("밀치기 저항") || line.contains("이동 속도") || line.contains("발에 있을 때:"));
+
+        // 7. 바닐라 스타일로 속성 정보를 로어에 직접 추가합니다.
+        lore.add("§7발에 있을 때:");
+
+        // 로어에 표시할 값을 다시 계산합니다.
+        double armor = getBaseArmorAttribute(item.getType(), "armor");
+        double toughness = getBaseArmorAttribute(item.getType(), "toughness");
+        double knockbackResistance = getBaseArmorAttribute(item.getType(), "knockbackResistance");
+
+        if (armor > 0) lore.add("§2 " + String.format("%.0f", armor) + " 방어");
+        if (toughness > 0) lore.add("§2 " + String.format("%.0f", toughness) + " 방어 강도");
+        if (knockbackResistance > 0) lore.add("§2 " + String.format("%.1f", knockbackResistance) + " 밀치기 저항");
+        if (speedBonus > 0) lore.add("§2 +" + String.format("%.0f", speedBonus * 100) + "% 이동 속도");
     }
 
     private void applyBaseArmorAttributes(Material material, ItemMeta meta) {
@@ -51,9 +81,32 @@ public class BootsProfile implements IUpgradeableProfile {
             case NETHERITE_BOOTS -> { armor = 3; toughness = 3; knockbackResistance = 0.1; }
         }
 
-        if (armor > 0) meta.addAttributeModifier(Attribute.GENERIC_ARMOR, new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "generic_armor"), armor, AttributeModifier.Operation.ADD_NUMBER));
-        if (toughness > 0) meta.addAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS, new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "generic_armor_toughness"), toughness, AttributeModifier.Operation.ADD_NUMBER));
-        if (knockbackResistance > 0) meta.addAttributeModifier(Attribute.GENERIC_KNOCKBACK_RESISTANCE, new AttributeModifier(new NamespacedKey(DF_Main.getInstance(), "generic_knockback_resistance"), knockbackResistance, AttributeModifier.Operation.ADD_NUMBER));
+        if (armor > 0) {
+            AttributeModifier armorModifier = new AttributeModifier(ARMOR_MODIFIER_UUID, "generic.armor", armor, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlot.FEET);
+            meta.addAttributeModifier(Attribute.GENERIC_ARMOR, armorModifier);
+        }
+        if (toughness > 0) {
+            AttributeModifier toughnessModifier = new AttributeModifier(ARMOR_TOUGHNESS_MODIFIER_UUID, "generic.armorToughness", toughness, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlot.FEET);
+            meta.addAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS, toughnessModifier);
+        }
+        if (knockbackResistance > 0) {
+            AttributeModifier knockbackModifier = new AttributeModifier(KNOCKBACK_RESISTANCE_MODIFIER_UUID, "generic.knockbackResistance", knockbackResistance, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlot.FEET);
+            meta.addAttributeModifier(Attribute.GENERIC_KNOCKBACK_RESISTANCE, knockbackModifier);
+        }
+    }
+
+    private double getBaseArmorAttribute(Material material, String type) {
+        return switch (material) {
+            case LEATHER_BOOTS, CHAINMAIL_BOOTS, GOLDEN_BOOTS -> "armor".equals(type) ? 1 : 0;
+            case IRON_BOOTS -> "armor".equals(type) ? 2 : 0;
+            case DIAMOND_BOOTS -> switch (type) {
+                case "armor" -> 3; case "toughness" -> 2; default -> 0;
+            };
+            case NETHERITE_BOOTS -> switch (type) {
+                case "armor" -> 3; case "toughness" -> 3; case "knockbackResistance" -> 0.1; default -> 0;
+            };
+            default -> 0;
+        };
     }
 
     @Override

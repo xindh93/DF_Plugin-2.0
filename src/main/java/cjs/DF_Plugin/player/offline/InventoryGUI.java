@@ -33,10 +33,10 @@ public class InventoryGUI {
 
         // 메인 인벤토리 (핫바 포함)
         ItemStack[] mainContents = offlineInventory.getMain();
-        for (int i = 0; i < 27; i++) { // 9-35번 슬롯
-            gui.setItem(i + 9, mainContents[i + 18]);
+        for (int i = 0; i < 27; i++) { // 9-35번 슬롯 -> GUI 18-44번 슬롯 (3-5번째 줄)
+            gui.setItem(i + 18, mainContents[i + 9]);
         }
-        for (int i = 0; i < 9; i++) { // 0-8번 슬롯 (핫바)
+        for (int i = 0; i < 9; i++) { // 0-8번 슬롯 (핫바) -> GUI 45-53번 슬롯 (6번째 줄)
             gui.setItem(i + 45, mainContents[i]);
         }
 
@@ -45,7 +45,9 @@ public class InventoryGUI {
 
     public static OfflineInventory fromGui(Inventory gui) {
         ItemStack[] main = new ItemStack[36];
-        for (int i = 0; i < 27; i++) { main[i + 9] = gui.getItem(i + 9); }
+        for (int i = 0; i < 27; i++) {
+            main[i + 9] = gui.getItem(i + 18);
+        }
         for (int i = 0; i < 9; i++) { main[i] = gui.getItem(i + 45); }
 
         ItemStack[] armor = new ItemStack[4];

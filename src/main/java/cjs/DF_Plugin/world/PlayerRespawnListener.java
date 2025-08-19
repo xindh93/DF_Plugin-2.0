@@ -40,7 +40,7 @@ public class PlayerRespawnListener implements Listener {
             // 게임 중일 때
             if (clan.getPylonLocations().isEmpty()) {
                 // 파일런이 없으면 임시 부활 지점으로
-                Location tempRespawn = gameStartManager.getTemporaryRespawnPoint(clan.getLeader());
+                Location tempRespawn = clan.getStartLocation();
                 if (tempRespawn != null) {
                     event.setRespawnLocation(tempRespawn);
                     player.sendMessage("§e설치된 파일런이 없어 임시 지점에서 부활합니다.");
@@ -56,7 +56,7 @@ public class PlayerRespawnListener implements Listener {
     }
 
     private void setRespawnAtPylon(PlayerRespawnEvent event, Clan clan) {
-        String locString = clan.getPylonLocations().iterator().next();
+        String locString = clan.getPylonLocations().keySet().iterator().next();
         Location pylonLoc = PluginUtils.deserializeLocation(locString);
         if (pylonLoc != null && pylonLoc.getWorld() != null) {
             // 파일런 주변의 안전한 리스폰 위치를 찾습니다.

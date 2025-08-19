@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.player.death;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.data.PlayerDataManager;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -9,8 +10,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,40 +21,29 @@ import java.util.logging.Level;
  */
 public class PlayerDeathManager implements Listener {
     private final DF_Main plugin;
-    private final File deathsFile;
-    private final FileConfiguration deathsConfig;
     private final Map<UUID, Long> deadPlayers = new ConcurrentHashMap<>(); // Player UUID -> Death Timestamp
 
     public PlayerDeathManager(DF_Main plugin) {
         this.plugin = plugin;
-        File playersFolder = new File(plugin.getDataFolder(), "players");
-        if (!playersFolder.exists()) {
-            playersFolder.mkdirs();
-        }
-        this.deathsFile = new File(playersFolder, "deaths.yml");
-        if (!deathsFile.exists()) {
-            try {
-                deathsFile.createNewFile();
-                plugin.getLogger().info("Created a new deaths.yml file.");
-            } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "Could not create deaths.yml!", e);
-            }
-        }
-        this.deathsConfig = YamlConfiguration.loadConfiguration(deathsFile);
-        loadDeaths();
+        loadAllData();
     }
 
-    private void loadDeaths() {
-        if (deathsConfig.isConfigurationSection("deaths")) {
-            deathsConfig.getConfigurationSection("deaths").getKeys(false).forEach(uuidString -> {
+    private void loadAllData() {
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        FileConfiguration config = pdm.getConfig();
+        if (config.isConfigurationSection("players")) {
+            config.getConfigurationSection("players").getKeys(false).forEach(uuidString -> {
                 try {
-                    deadPlayers.put(UUID.fromString(uuidString), deathsConfig.getLong("deaths." + uuidString));
+                    UUID uuid = UUID.fromString(uuidString);
+                    if (config.isSet("players." + uuidString + ".death.timestamp")) {
+                        deadPlayers.put(uuid, config.getLong("players." + uuidString + ".death.timestamp"));
+                    }
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Invalid UUID found in deaths.yml: " + uuidString);
+                    plugin.getLogger().warning("Invalid UUID found in playerdata.yml: " + uuidString);
                 }
             });
-            plugin.getLogger().info("Loaded " + deadPlayers.size() + " death ban entries.");
         }
+        plugin.getLogger().info("Loaded " + deadPlayers.size() + " death ban entries.");
     }
 
     @EventHandler
@@ -108,21 +96,18 @@ public class PlayerDeathManager implements Listener {
     /**
      * 서버 종료 시 호출되어 모든 사망자 데이터를 파일에 저장합니다.
      */
-    public void saveOnDisable() {
+    public void saveAllData() {
         plugin.getLogger().info("Saving " + deadPlayers.size() + " death ban entries...");
-        // 먼저 기존 데이터를 모두 지웁니다.
-        deathsConfig.set("deaths", null);
-        // 현재 메모리에 있는 데이터로 덮어씁니다.
-        deadPlayers.forEach((uuid, timestamp) -> deathsConfig.set("deaths." + uuid.toString(), timestamp));
-
-        try {
-            deathsConfig.save(deathsFile);
-            plugin.getLogger().info("Death ban entries saved successfully.");
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save deaths.yml!", e);
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        FileConfiguration config = pdm.getConfig();
+        // 기존 데이터를 지우기 위해 players 섹션을 순회하며 death 관련 데이터만 제거
+        if (config.isConfigurationSection("players")) {
+            for (String uuidStr : config.getConfigurationSection("players").getKeys(false)) {
+                config.set("players." + uuidStr + ".death", null);
+            }
         }
+        deadPlayers.forEach((uuid, timestamp) -> config.set("players." + uuid.toString() + ".death.timestamp", timestamp));
     }
-
     private long getRemainingBanMillis(UUID playerUUID) {
         // config.yml의 death-timer.time은 분 단위로 저장됩니다.
         final long deathTime = deadPlayers.get(playerUUID);

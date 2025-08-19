@@ -27,7 +27,7 @@ public class ShieldBashAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§e방패 돌격";
+        return "§a방패 돌격";
     }
 
     @Override

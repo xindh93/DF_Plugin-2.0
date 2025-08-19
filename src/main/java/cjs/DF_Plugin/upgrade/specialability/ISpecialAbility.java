@@ -15,6 +15,9 @@ import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.ItemStack;
 
 public interface ISpecialAbility {
+
+    enum ChargeDisplayType { DOTS, FRACTION }
+
     String getInternalName();
     String getDisplayName();
     String getDescription();
@@ -36,7 +39,6 @@ public interface ISpecialAbility {
     default void onPlayerFish(org.bukkit.event.player.PlayerFishEvent event, Player player, ItemStack item) {}
     default void onPlayerToggleSneak(PlayerToggleSneakEvent event, Player player, ItemStack item) {}
     default void onEquip(Player player, ItemStack item) {}
-    default void onProjectileHit(ProjectileHitEvent event, Player player, ItemStack item) {}
     default void onPlayerJump(PlayerJumpEvent event, Player player, ItemStack item) {}
     default void onCleanup(Player player) {}
     default void onPlayerToggleFlight(PlayerToggleFlightEvent event, Player player, ItemStack item) {}
@@ -55,5 +57,13 @@ public interface ISpecialAbility {
      */
     default boolean showInActionBar() {
         return true;
+    }
+
+    /**
+     * 이 능력의 충전량을 액션바에 어떤 형태로 표시할지 결정합니다.
+     * @return 표시 형식 (기본값: DOTS)
+     */
+    default ChargeDisplayType getChargeDisplayType() {
+        return ChargeDisplayType.DOTS;
     }
 }

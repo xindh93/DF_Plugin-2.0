@@ -1,7 +1,10 @@
 package cjs.DF_Plugin.upgrade.specialability;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.data.PlayerDataManager;
+import cjs.DF_Plugin.upgrade.specialability.impl.TotemAbility;
 import cjs.DF_Plugin.settings.GameConfigManager;
+import org.bukkit.event.Listener;
 import org.bukkit.Bukkit;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import org.bukkit.NamespacedKey;
@@ -26,8 +29,6 @@ public class SpecialAbilityManager {
     public static final NamespacedKey ITEM_UUID_KEY = new NamespacedKey(DF_Main.getInstance(), "item_uuid");
 
     private final DF_Main plugin;
-    private final File dataFile;
-    private FileConfiguration dataConfig;
 
     private final Map<UUID, Map<String, CooldownInfo>> playerCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, ChargeInfo>> playerCharges = new ConcurrentHashMap<>();
@@ -42,80 +43,69 @@ public class SpecialAbilityManager {
     // Record to hold cooldown information for the action bar
     public record CooldownInfo(long endTime, String displayName) {}
     // Record to hold charge information for the action bar
-    public record ChargeInfo(int current, int max, String displayName, boolean visible) {}
+    public record ChargeInfo(int current, int max, String displayName, boolean visible, ISpecialAbility.ChargeDisplayType displayType) {}
 
     public SpecialAbilityManager(DF_Main plugin) {
         this.plugin = plugin;
-        File playersFolder = new File(plugin.getDataFolder(), "players");
-        if (!playersFolder.exists()) {
-            playersFolder.mkdirs();
-        }
-        this.dataFile = new File(playersFolder, "ability_data.yml");
-        loadData();
+        loadAllData();
         startPassiveTicker();
     }
 
-    public void loadData() {
-        if (!dataFile.exists()) {
-            try {
-                dataFile.createNewFile();
-            } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "Could not create ability_data.yml", e);
-            }
-        }
-        dataConfig = YamlConfiguration.loadConfiguration(dataFile);
+    public void loadAllData() {
+        // 데이터 로딩은 각 하위 메서드에서 처리합니다.
         loadCooldowns();
         loadCharges();
     }
 
-    public void saveData() {
-        dataConfig.set("cooldowns", null);
-        dataConfig.set("charges", null);
+    public void saveAllData() {
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        FileConfiguration config = pdm.getConfig();
+
+        // 기존 데이터를 지우기 위해 players 섹션을 순회하며 abilities 관련 데이터만 제거
+        if (config.isConfigurationSection("players")) {
+            for (String uuidStr : config.getConfigurationSection("players").getKeys(false)) {
+                config.set("players." + uuidStr + ".abilities", null);
+            }
+        }
 
         playerCooldowns.forEach((uuid, cooldownMap) -> {
             cooldownMap.forEach((key, info) -> {
                 if (System.currentTimeMillis() < info.endTime()) {
-                    String path = "cooldowns." + uuid + "." + key;
-                    dataConfig.set(path + ".endTime", info.endTime());
-                    dataConfig.set(path + ".displayName", info.displayName());
+                    String path = "players." + uuid + ".abilities.cooldowns." + key;
+                    config.set(path + ".endTime", info.endTime());
+                    config.set(path + ".displayName", info.displayName());
                 }
             });
         });
 
         playerCharges.forEach((uuid, chargeMap) -> {
             chargeMap.forEach((key, info) -> {
-                // 쿨다운이 돌고 있지 않은 다회성 능력의 현재 충전 횟수만 저장
-                if (!playerCooldowns.getOrDefault(uuid, Collections.emptyMap()).containsKey(key)) {
-                    String path = "charges." + uuid + "." + key;
-                    dataConfig.set(path + ".current", info.current());
-                    dataConfig.set(path + ".max", info.max());
-                    dataConfig.set(path + ".displayName", info.displayName());
-                }
+                String path = "players." + uuid + ".abilities.charges." + key;
+                config.set(path + ".current", info.current());
+                config.set(path + ".max", info.max());
+                config.set(path + ".displayName", info.displayName());
+                config.set(path + ".visible", info.visible());
             });
         });
-
-        try {
-            dataConfig.save(dataFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save ability_data.yml", e);
-        }
+        // PlayerDataManager가 파일 저장을 담당하므로 여기서는 호출하지 않음
+        // DF_Main의 onDisable에서 한 번에 저장됩니다.
     }
 
     private void loadCooldowns() {
-        playerCooldowns.clear();
-        ConfigurationSection section = dataConfig.getConfigurationSection("cooldowns");
-        if (section == null) return;
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        ConfigurationSection playersSection = pdm.getConfig().getConfigurationSection("players");
+        if (playersSection == null) return;
 
-        for (String uuidStr : section.getKeys(false)) {
+        for (String uuidStr : playersSection.getKeys(false)) {
             UUID uuid = UUID.fromString(uuidStr);
             Map<String, CooldownInfo> cooldowns = new ConcurrentHashMap<>();
-            ConfigurationSection playerSection = section.getConfigurationSection(uuidStr);
-            if (playerSection == null) continue;
+            ConfigurationSection cooldownsSection = playersSection.getConfigurationSection(uuidStr + ".abilities.cooldowns");
+            if (cooldownsSection == null) continue;
 
-            for (String key : playerSection.getKeys(false)) {
-                long endTime = playerSection.getLong(key + ".endTime");
+            for (String key : cooldownsSection.getKeys(false)) {
+                long endTime = cooldownsSection.getLong(key + ".endTime");
                 if (System.currentTimeMillis() < endTime) {
-                    String displayName = playerSection.getString(key + ".displayName", "Ability");
+                    String displayName = cooldownsSection.getString(key + ".displayName", "Ability");
                     cooldowns.put(key, new CooldownInfo(endTime, displayName));
                 }
             }
@@ -127,20 +117,24 @@ public class SpecialAbilityManager {
 
     private void loadCharges() {
         playerCharges.clear();
-        ConfigurationSection section = dataConfig.getConfigurationSection("charges");
-        if (section == null) return;
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        ConfigurationSection playersSection = pdm.getConfig().getConfigurationSection("players");
+        if (playersSection == null) return;
 
-        for (String uuidStr : section.getKeys(false)) {
+        for (String uuidStr : playersSection.getKeys(false)) {
             UUID uuid = UUID.fromString(uuidStr);
             Map<String, ChargeInfo> charges = new ConcurrentHashMap<>();
-            ConfigurationSection playerSection = section.getConfigurationSection(uuidStr);
-            if (playerSection == null) continue;
+            ConfigurationSection chargesSection = playersSection.getConfigurationSection(uuidStr + ".abilities.charges");
+            if (chargesSection == null) continue;
 
-            for (String key : playerSection.getKeys(false)) {
-                int current = playerSection.getInt(key + ".current");
-                int max = playerSection.getInt(key + ".max");
-                String displayName = playerSection.getString(key + ".displayName", "Ability");
-                charges.put(key, new ChargeInfo(current, max, displayName, true)); // 이전 데이터는 항상 보이도록 설정
+            for (String key : chargesSection.getKeys(false)) {
+                int current = chargesSection.getInt(key + ".current");
+                int max = chargesSection.getInt(key + ".max");
+                String displayName = chargesSection.getString(key + ".displayName", "Ability");
+                boolean visible = chargesSection.getBoolean(key + ".visible", false);
+                ISpecialAbility ability = getRegisteredAbility(key);
+                ISpecialAbility.ChargeDisplayType displayType = (ability != null) ? ability.getChargeDisplayType() : ISpecialAbility.ChargeDisplayType.DOTS;
+                charges.put(key, new ChargeInfo(current, max, displayName, visible, displayType));
             }
             if (!charges.isEmpty()) {
                 playerCharges.put(uuid, charges);
@@ -150,6 +144,7 @@ public class SpecialAbilityManager {
 
     public void registerAbilities() {
         registeredAbilities.clear();
+        // 모든 프로필과 수동 등록을 통해 능력들을 수집합니다.
         plugin.getUpgradeManager().getProfileRegistry().getAllProfiles()
                 .forEach(profile -> {
                     profile.getSpecialAbility().ifPresent(ability ->
@@ -158,6 +153,21 @@ public class SpecialAbilityManager {
                     profile.getAdditionalAbilities().forEach(ability ->
                             registeredAbilities.put(ability.getInternalName(), ability));
                 });
+
+        // Manually register abilities that don't come from an item profile
+        ISpecialAbility totem = new TotemAbility();
+        registeredAbilities.put(totem.getInternalName(), totem);
+
+        // Listener를 구현하는 능력들을 등록합니다.
+        ISpecialAbility passiveAbsorption = new cjs.DF_Plugin.upgrade.specialability.impl.PassiveAbsorptionAbility();
+        registeredAbilities.put(passiveAbsorption.getInternalName(), passiveAbsorption);
+
+        // 등록된 모든 능력을 확인하고, Listener를 구현하는 경우 이벤트 리스너로 등록합니다.
+        for (ISpecialAbility ability : registeredAbilities.values()) {
+            if (ability instanceof Listener) {
+                plugin.getServer().getPluginManager().registerEvents((Listener) ability, plugin);
+            }
+        }
     }
 
     /**
@@ -172,6 +182,24 @@ public class SpecialAbilityManager {
                 Optional.ofNullable(getRegisteredAbility(abilityName)).ifPresent(ability -> ability.onCleanup(player));
             });
         }
+    }
+
+    /**
+     * 서버 종료 시, 온라인 상태인 모든 플레이어의 활성화된 능력을 정리합니다.
+     * 이는 onCleanup을 호출하여 액션바, 공전 삼지창 등을 올바르게 제거하고,
+     * 이 상태가 파일에 저장되어 재접속 시 원치 않는 효과가 나타나는 문제를 방지합니다.
+     */
+    public void cleanupAllActiveAbilities() {
+        // lastActiveAbilities 맵을 순회하며 온라인 플레이어에 대한 정리 작업을 수행합니다.
+        // ConcurrentModificationException을 방지하기 위해 키셋의 복사본을 사용합니다.
+        new HashSet<>(lastActiveAbilities.keySet()).forEach(uuid -> {
+            Player player = Bukkit.getPlayer(uuid);
+            // 플레이어가 온라인 상태일 때만 정리 작업을 수행합니다.
+            // 오프라인 플레이어는 onPlayerQuit에서 이미 정리되었습니다.
+            if (player != null && player.isOnline()) {
+                cleanupPlayer(player);
+            }
+        });
     }
 
     /**
@@ -209,7 +237,10 @@ public class SpecialAbilityManager {
 
         for (ItemStack item : itemsToCheck) {
             if (item != null) {
-                getAbilityFromItem(item).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), item));
+                // 10강 이상인 아이템의 능력만 활성화 대상으로 간주합니다.
+                if (plugin.getUpgradeManager().getUpgradeLevel(item) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
+                    getAbilityFromItem(item).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), item));
+                }
             }
         }
 
@@ -228,6 +259,17 @@ public class SpecialAbilityManager {
 
         // 5. 마지막 상태를 현재 상태로 업데이트합니다.
         lastActiveAbilities.put(player.getUniqueId(), currentAbilities);
+    }
+
+    /**
+     * 플레이어가 특정 능력을 현재 활성화(장착)하고 있는지 확인합니다.
+     * @param player 확인할 플레이어
+     * @param abilityName 확인할 능력의 internal name
+     * @return 능력이 활성화 상태이면 true
+     */
+    public boolean isAbilityActive(Player player, String abilityName) {
+        Map<String, ItemStack> activeAbilities = lastActiveAbilities.get(player.getUniqueId());
+        return activeAbilities != null && activeAbilities.containsKey(abilityName);
     }
 
     public ISpecialAbility getRegisteredAbility(String internalName) {
@@ -267,7 +309,7 @@ public class SpecialAbilityManager {
             String chargeKey = getChargeKey(ability);
             Map<String, ChargeInfo> charges = playerCharges.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>());
             int maxCharges = ability.getMaxCharges();
-            ChargeInfo info = charges.getOrDefault(chargeKey, new ChargeInfo(maxCharges, maxCharges, ability.getDisplayName(), true));
+            ChargeInfo info = charges.getOrDefault(chargeKey, new ChargeInfo(maxCharges, maxCharges, ability.getDisplayName(), true, ability.getChargeDisplayType()));
 
             if (info.current() <= 0) {
                 // 이 경우는 보통 쿨다운이 막 시작되었을 때 발생합니다. 쿨다운 메시지를 다시 표시해줍니다.
@@ -276,7 +318,7 @@ public class SpecialAbilityManager {
             }
 
             int newCount = info.current() - 1;
-            charges.put(chargeKey, new ChargeInfo(newCount, maxCharges, ability.getDisplayName(), true));
+            charges.put(chargeKey, new ChargeInfo(newCount, maxCharges, ability.getDisplayName(), true, ability.getChargeDisplayType()));
 
             if (newCount <= 0) {
                 setCooldown(player, ability, item, ability.getCooldown());
@@ -298,7 +340,6 @@ public class SpecialAbilityManager {
      */
     public void setCooldown(Player player, ISpecialAbility ability, ItemStack item, double cooldownSeconds) {
         if (cooldownSeconds <= 0) return;
-
         long newEndTime = System.currentTimeMillis() + (long) (cooldownSeconds * 1000);
         String cooldownKey = getCooldownKey(player, ability, item);
         String displayName = ability.getDisplayName();
@@ -359,18 +400,6 @@ public class SpecialAbilityManager {
      * @param player 대상 플레이어
      * @param ability 충전량을 환불할 능력
      */
-    public void refundCharge(Player player, ISpecialAbility ability) {
-        if (ability.getMaxCharges() <= 1) return; // 충전식 능력이 아니면 실행하지 않음
-
-        String chargeKey = getChargeKey(ability);
-        Map<String, ChargeInfo> charges = playerCharges.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>());
-        int maxCharges = ability.getMaxCharges();
-        // 현재 정보가 없으면 최대치로 간주
-        ChargeInfo info = charges.getOrDefault(chargeKey, new ChargeInfo(maxCharges, maxCharges, ability.getDisplayName(), true));
-
-        int newCount = Math.min(maxCharges, info.current() + 1);
-        charges.put(chargeKey, new ChargeInfo(newCount, maxCharges, ability.getDisplayName(), true));
-    }
 
     public long getRemainingCooldown(Player player, ISpecialAbility ability, ItemStack item) {
         String cooldownKey = getCooldownKey(player, ability, item);
@@ -390,7 +419,7 @@ public class SpecialAbilityManager {
         String chargeKey = getChargeKey(ability);
         String displayName = ability.getDisplayName();
         playerCharges.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>())
-                .put(chargeKey, new ChargeInfo(current, max, displayName, true));
+                .put(chargeKey, new ChargeInfo(current, max, displayName, true, ability.getChargeDisplayType()));
     }
 
     public void setChargeVisibility(Player player, ISpecialAbility ability, boolean visible) {
@@ -400,7 +429,7 @@ public class SpecialAbilityManager {
             ChargeInfo oldInfo = charges.get(chargeKey);
             // 정보가 존재하고, 가시성 상태가 변경될 때만 업데이트합니다.
             if (oldInfo != null && oldInfo.visible() != visible) {
-                charges.put(chargeKey, new ChargeInfo(oldInfo.current(), oldInfo.max(), oldInfo.displayName(), visible));
+                charges.put(chargeKey, new ChargeInfo(oldInfo.current(), oldInfo.max(), oldInfo.displayName(), visible, oldInfo.displayType()));
             }
         }
     }

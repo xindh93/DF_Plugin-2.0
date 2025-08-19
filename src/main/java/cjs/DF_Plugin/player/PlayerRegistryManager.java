@@ -2,19 +2,17 @@ package cjs.DF_Plugin.player;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.data.PlayerDataManager;
+import cjs.DF_Plugin.player.stats.StatsManager;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.*;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -24,46 +22,27 @@ import java.util.stream.Collectors;
  */
 public class PlayerRegistryManager implements Listener {
     private final DF_Main plugin;
-    private File playersFile;
-    private FileConfiguration playersConfig;
     private final Map<UUID, RegisteredPlayerData> allPlayers = new HashMap<>();
 
     public PlayerRegistryManager(DF_Main plugin) {
         this.plugin = plugin;
-        setupPlayersFile();
         loadPlayers();
     }
 
-    private void setupPlayersFile() {
-        File playersFolder = new File(plugin.getDataFolder(), "players");
-        if (!playersFolder.exists()) {
-            playersFolder.mkdirs();
-        }
-        playersFile = new File(playersFolder, "players.yml");
-        if (!playersFile.exists()) {
-            try {
-                playersFile.createNewFile();
-            } catch (IOException e) {
-                plugin.getLogger().severe("Could not create players.yml: " + e.getMessage());
-            }
-        }
-        playersConfig = YamlConfiguration.loadConfiguration(playersFile);
-    }
-
     private void loadPlayers() {
-        if (playersConfig.isConfigurationSection("players")) {
-            ConfigurationSection playersSection = playersConfig.getConfigurationSection("players");
-            if (playersSection == null) return;
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        ConfigurationSection playersSection = pdm.getConfig().getConfigurationSection("players");
+        if (playersSection != null) {
             for (String uuidString : playersSection.getKeys(false)) {
                 try {
                     UUID uuid = UUID.fromString(uuidString);
-                    String name = playersConfig.getString("players." + uuidString + ".name");
-                    String clanName = playersConfig.getString("players." + uuidString + ".clan"); // can be null
+                    String name = playersSection.getString(uuidString + ".name");
+                    String clanName = playersSection.getString(uuidString + ".clan");
                     if (name != null) {
                         allPlayers.put(uuid, new RegisteredPlayerData(name, clanName));
                     }
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Invalid UUID in players.yml: " + uuidString);
+                    plugin.getLogger().warning("Invalid UUID in playerdata.yml: " + uuidString);
                 }
             }
         }
@@ -77,22 +56,33 @@ public class PlayerRegistryManager implements Listener {
                 if (name != null) {
                     plugin.getLogger().info("기록에 없는 오프라인 플레이어를 발견하여 등록합니다: " + name);
                     allPlayers.put(uuid, new RegisteredPlayerData(name, null));
-                    playersConfig.set("players." + uuid + ".name", name);
-                    playersConfig.set("players." + uuid + ".clan", null); // 기본적으로 클랜 없음
+                    pdm.getPlayerSection(uuid).set("name", name);
+                    pdm.getPlayerSection(uuid).set("clan", null);
                     needsSave = true;
                 }
             }
         }
 
         if (needsSave) {
-            savePlayersFile();
+            pdm.saveConfig();
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        StatsManager statsManager = plugin.getStatsManager();
+
+        // 플레이어의 스탯 데이터가 없는 경우 (첫 접속) 기본 스탯을 설정합니다.
+        if (!statsManager.hasStats(uuid)) {
+            plugin.getLogger().info(player.getName() + "님이 처음 접속하여 기본 스탯을 설정합니다.");
+            // getPlayerStats는 스탯이 없으면 기본값으로 생성하므로, 호출하는 것만으로도 캐시에 등록됩니다.
+            statsManager.getPlayerStats(uuid);
+        }
+
         updatePlayerClan(player.getUniqueId(), plugin.getClanManager().getClanByPlayer(player.getUniqueId()));
+        plugin.getPlayerDataManager().setPlayerName(player); // 이름 변경 시 업데이트
     }
 
     /**
@@ -113,9 +103,11 @@ public class PlayerRegistryManager implements Listener {
         // 데이터가 변경되었을 경우에만 업데이트
         if (currentData == null || !currentData.getName().equals(playerName) || !Objects.equals(currentData.getClanName(), clanName)) {
             allPlayers.put(playerUUID, new RegisteredPlayerData(playerName, clanName));
-            playersConfig.set("players." + playerUUID + ".name", playerName);
-            playersConfig.set("players." + playerUUID + ".clan", clanName);
-            savePlayersFile();
+            PlayerDataManager pdm = plugin.getPlayerDataManager();
+            ConfigurationSection playerSection = pdm.getPlayerSection(playerUUID);
+            playerSection.set("name", playerName);
+            playerSection.set("clan", clanName);
+            // No need to save immediately, will be saved on disable.
         }
     }
 
@@ -132,15 +124,6 @@ public class PlayerRegistryManager implements Listener {
 
     public List<UUID> getAllPlayerUUIDs() {
         return new ArrayList<>(allPlayers.keySet());
-    }
-
-    private void savePlayersFile() {
-        try {
-            playersConfig.save(playersFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Could not save players.yml!");
-            e.printStackTrace();
-        }
     }
 
     /**

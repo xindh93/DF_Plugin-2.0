@@ -2,13 +2,12 @@ package cjs.DF_Plugin.command;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.command.admin.DFAdminCommand;
-import cjs.DF_Plugin.command.clan.CreateClanCommand;
+import cjs.DF_Plugin.command.clan.ClanCommand;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-import cjs.DF_Plugin.command.clan.DeleteClanCommand;
 
 
 import java.util.Arrays;
@@ -16,20 +15,18 @@ import java.util.Arrays;
 public class DFCommand implements CommandExecutor {
 
     private final DFAdminCommand adminCommand;
-    private final CreateClanCommand createClanCommand;
-    private final DeleteClanCommand deleteClanCommand;
+    private final ClanCommand clanCommand;
 
     public DFCommand(DF_Main plugin) {
         this.adminCommand = new DFAdminCommand(plugin);
-        this.createClanCommand = new CreateClanCommand(plugin);
-        this.deleteClanCommand = new DeleteClanCommand(plugin);
+        this.clanCommand = new ClanCommand(plugin);
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (args.length == 0) {
             sender.sendMessage("§c사용법: /df <명령어> [옵션...]");
-            sender.sendMessage("§7사용 가능한 명령어: createclan, deleteclan");
+            sender.sendMessage("§7사용 가능한 명령어: clan");
             if (sender.hasPermission("df.admin")) {
                 sender.sendMessage("§c관리자 명령어: admin");
             }
@@ -41,18 +38,12 @@ public class DFCommand implements CommandExecutor {
 
         switch (subCommand) {
             // --- 일반 플레이어 명령어 ---
-            case "createclan":
+            case "clan":
                 if (!(sender instanceof Player)) {
                     sender.sendMessage("§c플레이어만 사용할 수 있는 명령어입니다.");
                     return true;
                 }
-                return createClanCommand.handle((Player) sender, subArgs);
-            case "deleteclan":
-                if (!(sender instanceof Player)) {
-                    sender.sendMessage("§c플레이어만 사용할 수 있는 명령어입니다.");
-                    return true;
-                }
-                return deleteClanCommand.handle((Player) sender, subArgs);
+                return clanCommand.handle((Player) sender, subArgs);
 
             // --- 관리자 전용 명령어 ---
             case "admin":

@@ -95,7 +95,7 @@ public class PylonProtectionListener implements Listener {
             plugin.getPylonManager().getStructureManager().removeBaseAndBarrier(block.getLocation());
             areaManager.removeProtectedPylon(block.getLocation());
             victimClan.removePylonLocation(pylonLocStr);
-            clanManager.getStorageManager().saveClan(victimClan);
+            clanManager.saveClanData(victimClan);
             attackerClan.broadcastMessage("§a" + victimClan.getFormattedName() + "§a 가문의 보조 파일런을 파괴했습니다!");
             victimClan.broadcastMessage("§c" + attackerClan.getFormattedName() + "§c 가문에 의해 보조 파일런이 파괴되었습니다!");
 

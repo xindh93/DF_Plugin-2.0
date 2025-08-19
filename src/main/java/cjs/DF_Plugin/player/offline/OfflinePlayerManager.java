@@ -3,9 +3,9 @@ package cjs.DF_Plugin.player.offline;
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
 import cjs.DF_Plugin.clan.ClanManager;
+import cjs.DF_Plugin.data.InventoryDataManager;
 import cjs.DF_Plugin.player.death.PlayerDeathManager;
 import org.bukkit.*;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -24,8 +24,6 @@ import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +36,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class OfflinePlayerManager implements Listener {
 
     private final DF_Main plugin;
-    private final File dataFolder;
     public static final NamespacedKey OFFLINE_BODY_KEY = new NamespacedKey(DF_Main.getInstance(), "offline_body_uuid");
     private final PlayerDeathManager playerDeathManager;
     private final Map<Inventory, UUID> openInventories = new ConcurrentHashMap<>();
@@ -47,14 +44,6 @@ public class OfflinePlayerManager implements Listener {
     public OfflinePlayerManager(DF_Main plugin) {
         this.plugin = plugin;
         this.playerDeathManager = plugin.getPlayerDeathManager();
-        File playersFolder = new File(plugin.getDataFolder(), "players");
-        if (!playersFolder.exists()) {
-            playersFolder.mkdirs();
-        }
-        this.dataFolder = new File(playersFolder, "offline_players");
-        if (!dataFolder.exists()) {
-            dataFolder.mkdirs();
-        }
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -122,10 +111,16 @@ public class OfflinePlayerManager implements Listener {
             }
         }
 
-        File playerFile = new File(dataFolder, playerUUID + ".yml");
-        if (playerFile.exists()) {
-            loadInventory(player, playerFile);
-            playerFile.delete();
+        OfflineInventory offlineInventory = loadOfflineInventory(playerUUID);
+        if (offlineInventory != null) {
+            // Restore player's inventory
+            player.getInventory().setStorageContents(offlineInventory.getMain());
+            player.getInventory().setArmorContents(offlineInventory.getArmor());
+            player.getInventory().setItemInOffHand(offlineInventory.getOffHand());
+
+            // Delete the data after loading
+            plugin.getInventoryDataManager().getInventoriesSection("player_inventory").set(playerUUID.toString(), null);
+            plugin.getInventoryDataManager().saveConfig();
         }
         removeBody(player);
     }
@@ -150,7 +145,7 @@ public class OfflinePlayerManager implements Listener {
         UUID offlinePlayerUUID = openInventories.remove(closedInventory);
         viewingPlayers.remove(offlinePlayerUUID); // 뷰어 정보 제거
         OfflineInventory updatedOfflineInventory = InventoryGUI.fromGui(closedInventory);
-        saveInventory(offlinePlayerUUID, updatedOfflineInventory);
+        saveOfflineInventory(offlinePlayerUUID, updatedOfflineInventory);
     }
 
     @EventHandler
@@ -309,53 +304,32 @@ public class OfflinePlayerManager implements Listener {
 
     private void saveInventory(Player player) {
         OfflineInventory offlineInventory = new OfflineInventory(
-                player.getInventory().getContents(),
+                player.getInventory().getStorageContents(),
                 player.getInventory().getArmorContents(),
                 player.getInventory().getItemInOffHand(),
                 getPlayerHead(player)
         );
-        saveInventory(player.getUniqueId(), offlineInventory);
+        saveOfflineInventory(player.getUniqueId(), offlineInventory);
     }
 
-    private void saveInventory(UUID playerUUID, OfflineInventory offlineInventory) {
-        File playerFile = new File(dataFolder, playerUUID + ".yml");
-        YamlConfiguration config = new YamlConfiguration();
-
-        config.set("inventory", offlineInventory.getMain());
-        config.set("armor", offlineInventory.getArmor());
-        config.set("offhand", offlineInventory.getOffHand());
-        config.set("head", offlineInventory.getPlayerHead());
-
-        try {
-            config.save(playerFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("오프라인 인벤토리 저장 실패: " + playerUUID);
-            e.printStackTrace();
-        }
-    }
-
-    private void loadInventory(Player player, File playerFile) {
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(playerFile);
-        ItemStack[] main = ((List<?>) Objects.requireNonNull(config.getList("inventory"))).toArray(new ItemStack[0]);
-        ItemStack[] armor = ((List<?>) Objects.requireNonNull(config.getList("armor"))).toArray(new ItemStack[0]);
-        ItemStack offhand = config.getItemStack("offhand", new ItemStack(Material.AIR));
-
-        player.getInventory().setContents(main);
-        player.getInventory().setArmorContents(armor);
-        player.getInventory().setItemInOffHand(offhand);
+    private void saveOfflineInventory(UUID playerUUID, OfflineInventory offlineInventory) {
+        Inventory gui = InventoryGUI.create(offlineInventory);
+        plugin.getInventoryDataManager().saveInventory(gui, "player_inventory", playerUUID.toString());
     }
 
     private OfflineInventory loadOfflineInventory(UUID playerUUID) {
-        File playerFile = new File(dataFolder, playerUUID + ".yml");
-        if (!playerFile.exists()) return null;
+        InventoryDataManager idm = plugin.getInventoryDataManager();
+        // Check if data exists for this player
+        if (!idm.getInventoriesSection("player_inventory").contains(playerUUID.toString())) {
+            return null;
+        }
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(playerFile);
-        ItemStack[] main = ((List<?>) Objects.requireNonNull(config.getList("inventory"))).toArray(new ItemStack[0]);
-        ItemStack[] armor = ((List<?>) Objects.requireNonNull(config.getList("armor"))).toArray(new ItemStack[0]);
-        ItemStack offhand = config.getItemStack("offhand", new ItemStack(Material.AIR));
-        ItemStack head = config.getItemStack("head", new ItemStack(Material.PLAYER_HEAD));
+        // Create a temporary GUI inventory to load data into
+        Inventory gui = Bukkit.createInventory(null, 54, "Offline Load");
+        idm.loadInventory(gui, "player_inventory", playerUUID.toString());
 
-        return new OfflineInventory(main, armor, offhand, head);
+        // Convert the GUI inventory back to our DTO
+        return InventoryGUI.fromGui(gui);
     }
 
     public void openOfflinePlayerGUI(Player viewer, UUID offlinePlayerUUID) {

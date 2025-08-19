@@ -19,10 +19,10 @@ public class DoubleJumpAbility implements ISpecialAbility {
     public String getInternalName() { return "double_jump"; }
 
     @Override
-    public String getDisplayName() { return "§e공중 도약"; }
+    public String getDisplayName() { return "§b더블 점프"; }
 
     @Override
-    public String getDescription() { return "§7공중에서 한 번 더 도약하고, 낙하 피해를 받지 않습니다. PvP 시 쿨타임이 적용됩니다."; }
+    public String getDescription() { return "§7공중에서 한 번 더 도약합니다"; }
 
     @Override
     public double getCooldown() {

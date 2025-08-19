@@ -18,7 +18,7 @@ public class ClanUIManager {
         // 가문 이름 설정
         TextComponent nameLine = new TextComponent("  §f가문 이름: ");
         TextComponent nameComponent = new TextComponent("§b[" + (session.name == null ? "이름 입력" : session.name) + "]");
-        nameComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/df createclan setname "));
+        nameComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/df clan create setname "));
         nameComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§e클릭하여 가문 이름을 입력하세요.").create()));
         nameLine.addExtra(nameComponent);
         player.spigot().sendMessage(nameLine);
@@ -26,7 +26,7 @@ public class ClanUIManager {
         // 가문 색상 설정
         TextComponent colorLine = new TextComponent("  §f가문 색상: ");
         TextComponent prevButton = new TextComponent("§c« ");
-        prevButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df createclan color prev"));
+        prevButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan create color prev"));
         colorLine.addExtra(prevButton);
 
         TextComponent colorComponent = new TextComponent(session.color + "[" + session.color.name() + "]");
@@ -34,7 +34,7 @@ public class ClanUIManager {
         colorLine.addExtra(colorComponent);
 
         TextComponent nextButton = new TextComponent(" §a»");
-        nextButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df createclan color next"));
+        nextButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan create color next"));
         colorLine.addExtra(nextButton);
         player.spigot().sendMessage(colorLine);
 
@@ -42,7 +42,7 @@ public class ClanUIManager {
 
         // 생성 버튼
         TextComponent createButton = new TextComponent("§a[생성하기]");
-        createButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df createclan confirm"));
+        createButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan create confirm"));
         createButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§a현재 설정으로 가문을 생성합니다.").create()));
         player.spigot().sendMessage(createButton);
 
@@ -59,11 +59,11 @@ public class ClanUIManager {
         player.sendMessage("");
 
         TextComponent confirmButton = new TextComponent("  §a[네, 삭제를 진행합니다]");
-        confirmButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df deleteclan confirm"));
+        confirmButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan delete confirm"));
         confirmButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§a클릭하여 가문 삭제를 계속 진행합니다.").create()));
 
         TextComponent cancelButton = new TextComponent("  §c[아니요, 취소합니다]");
-        cancelButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df deleteclan cancel"));
+        cancelButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan delete cancel"));
         cancelButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§c가문 삭제를 취소하고 돌아갑니다.").create()));
 
         player.spigot().sendMessage(confirmButton);
@@ -79,7 +79,7 @@ public class ClanUIManager {
         player.sendMessage("§4§l최종 확인: §c'" + clanName + "' 가문의 모든 정보가 영구적으로 사라집니다.");
 
         TextComponent finalDeleteButton = new TextComponent("§4§l[정말로 삭제합니다]");
-        finalDeleteButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df deleteclan finalconfirm"));
+        finalDeleteButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df clan delete finalconfirm"));
         finalDeleteButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§4모든 것을 이해했으며, 가문을 삭제합니다.").create()));
         player.spigot().sendMessage(finalDeleteButton);
         player.sendMessage("§e=============================");

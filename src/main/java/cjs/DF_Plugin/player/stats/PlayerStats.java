@@ -9,19 +9,19 @@ public class PlayerStats implements Cloneable {
     private int deaths = 0;
 
     public PlayerStats() {
-        // 모든 스탯을 기본값 1로 초기화합니다.
+        // 모든 스탯을 평가되지 않은 상태(0)로 초기화합니다.
         for (StatType type : StatType.values()) {
-            stats.put(type, 1);
+            stats.put(type, 0);
         }
     }
 
     public int getStat(StatType type) {
-        return stats.getOrDefault(type, 1);
+        return stats.getOrDefault(type, 0);
     }
 
     public void setStat(StatType type, int value) {
-        // 값의 범위를 1~5로 제한합니다.
-        int clampedValue = Math.max(1, Math.min(5, value));
+        // 값의 범위를 0~5로 제한합니다. (0: 미평가, 1~5: 평가됨)
+        int clampedValue = Math.max(0, Math.min(5, value));
         stats.put(type, clampedValue);
     }
 
@@ -62,13 +62,14 @@ public class PlayerStats implements Cloneable {
     }
 
     /**
-     * 모든 스탯이 기본값(1)인지 확인합니다.
-     * @return 모든 스탯이 1이면 true, 아니면 false
+     * 모든 스탯이 평가되지 않은 기본 상태(0)인지 확인합니다.
+     * @return 모든 스탯이 0이면 true, 아니면 false
      */
     public boolean isDefault() {
+        // 킬/데스가 있으면 평가된 것으로 간주
         if (kills != 0 || deaths != 0) return false;
         for (int value : stats.values()) {
-            if (value != 1) return false;
+            if (value != 0) return false;
         }
         return true;
     }

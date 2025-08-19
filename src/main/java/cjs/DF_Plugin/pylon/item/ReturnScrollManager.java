@@ -50,49 +50,21 @@ public class ReturnScrollManager {
 
         final Location startLocation = player.getLocation();
 
-        BukkitTask task = new BukkitRunnable() {
-            int ticks = 0;
-            final int totalTicks = castTime * 20;
-
-            @Override
-            public void run() {
-                if (!player.isOnline()) {
-                    cancelCasting(player, false);
-                    return;
-                }
-
-                // 시전 중 움직였는지 확인합니다. (블록 단위)
-                if (startLocation.getBlockX() != player.getLocation().getBlockX() ||
-                    startLocation.getBlockY() != player.getLocation().getBlockY() ||
-                    startLocation.getBlockZ() != player.getLocation().getBlockZ()) {
-                    cancelCasting(player, false);
-                    player.sendMessage("§c움직여서 시전이 취소되었습니다.");
-                    player.playSound(player.getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 0.7f, 1.0f);
-                    return;
-                }
-
-                // 시전 중 귀환 주문서를 계속 주 손에 들고 있는지 확인합니다.
-                if (!PylonItemFactory.isReturnScroll(player.getInventory().getItemInMainHand())) {
-                    cancelCasting(player, false); // "귀환이 취소되었습니다" 메시지는 중복되므로 false로 전달
-                    player.sendMessage("§c귀환 주문서를 손에서 놓아 시전이 취소되었습니다.");
-                    player.playSound(player.getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 0.7f, 1.0f);
-                    return;
-                }
-
-                if (ticks >= totalTicks) {
+        // 시전 완료 시 실행될 로직
+        Runnable onComplete = () -> {
+            if (castingPlayers.containsKey(player.getUniqueId())) { // 시전이 취소되지 않았는지 확인
+                castingPlayers.remove(player.getUniqueId());
+                if (player.isOnline()) {
                     teleportToPylonArea(player, clan);
                     consumeReturnScroll(player);
                     player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.2f);
                     player.sendMessage("§b파일런 영역으로 귀환했습니다.");
-                    castingPlayers.remove(player.getUniqueId());
-                    this.cancel();
-                    return;
                 }
-
-                spawnMagicCircle(player.getLocation());
-                ticks += 5;
             }
-        }.runTaskTimer(plugin, 0L, 5L);
+        };
+
+        // 새로운 파티클 효과와 함께 시전 시작
+        BukkitTask task = playCastEffect(player, castTime, startLocation, onComplete);
 
         castingPlayers.put(player.getUniqueId(), task);
     }
@@ -113,7 +85,7 @@ public class ReturnScrollManager {
     }
 
     private void teleportToPylonArea(Player player, Clan clan) {
-        List<String> pylonLocations = new ArrayList<>(clan.getPylonLocations());
+        List<String> pylonLocations = new ArrayList<>(clan.getPylonLocations().keySet());
         Collections.shuffle(pylonLocations);
         Location pylonCenter = PluginUtils.deserializeLocation(pylonLocations.get(0));
 
@@ -176,17 +148,44 @@ public class ReturnScrollManager {
         return pylonCenter.getWorld().getHighestBlockAt(pylonCenter).getLocation().add(0.5, 1, 0.5);
     }
 
-    private void spawnMagicCircle(Location center) {
-        World world = center.getWorld();
-        if (world == null) return;
+    private BukkitTask playCastEffect(Player player, int castTime, Location startLocation, Runnable onComplete) {
+        return new BukkitRunnable() {
+            int ticks = 0;
+            final double radius = 1.2;
+            double yOffset = 0.2;
 
-        double radius = 1.5;
-        for (int i = 0; i < 360; i += 15) {
-            double angle = Math.toRadians(i);
-            double x = radius * Math.cos(angle);
-            double z = radius * Math.sin(angle);
-            world.spawnParticle(Particle.ENCHANT, center.clone().add(x, 0.2, z), 1, 0, 0, 0, 0);
-        }
+            @Override
+            public void run() {
+                // 플레이어가 오프라인이거나, 움직였거나, 아이템을 바꿨으면 시전 취소
+                if (!player.isOnline() ||
+                        startLocation.getBlockX() != player.getLocation().getBlockX() ||
+                        startLocation.getBlockY() != player.getLocation().getBlockY() ||
+                        startLocation.getBlockZ() != player.getLocation().getBlockZ() ||
+                        !PylonItemFactory.isReturnScroll(player.getInventory().getItemInMainHand())) {
+
+                    cancelCasting(player, true); // 메시지와 함께 취소
+                    return;
+                }
+
+                if (ticks >= castTime * 20) {
+                    onComplete.run();
+                    this.cancel();
+                    return;
+                }
+
+                // 나선형 파티클 효과
+                Location playerLoc = player.getLocation();
+                for (int i = 0; i < 3; i++) { // 3개의 나선
+                    double angle = (ticks * 10 + (i * 120)) * (Math.PI / 180);
+                    double x = radius * Math.cos(angle);
+                    double z = radius * Math.sin(angle);
+                    player.getWorld().spawnParticle(Particle.REVERSE_PORTAL, playerLoc.clone().add(x, yOffset, z), 1, 0, 0, 0, 0);
+                }
+                yOffset += 0.08; // 파티클이 위로 올라가는 속도
+
+                ticks++;
+            }
+        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     /**

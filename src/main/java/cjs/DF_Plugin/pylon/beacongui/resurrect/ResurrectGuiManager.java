@@ -2,6 +2,7 @@ package cjs.DF_Plugin.pylon.beacongui.resurrect;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.items.ItemFactory;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
@@ -56,8 +57,9 @@ public class ResurrectGuiManager {
     }
 
     private ItemStack createResurrectionHead(OfflinePlayer deadPlayer) {
-        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta meta = (SkullMeta) head.getItemMeta();
+        // 오프라인 플레이어의 스킨을 올바르게 로드하기 위해 ItemFactory를 사용합니다.
+        ItemStack head = ItemFactory.createPlayerHead(deadPlayer.getUniqueId());
+        ItemMeta meta = head.getItemMeta();
 
         long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(deadPlayer.getUniqueId());
         int banDurationMinutes = plugin.getGameConfigManager().getPylonDeathBanDurationMinutes();
@@ -70,7 +72,6 @@ public class ResurrectGuiManager {
 
         String remainingTime = PluginUtils.formatTime(remainingMillis);
 
-        meta.setOwningPlayer(deadPlayer);
         meta.setDisplayName("§c" + deadPlayer.getName());
         meta.setLore(Arrays.asList(
                 "§7클릭하여 이 팀원을 부활시킵니다.",

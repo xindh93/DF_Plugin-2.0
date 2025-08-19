@@ -65,19 +65,14 @@ public class ClanNetherListener implements Listener {
             event.setTo(destination); // 서버가 포탈을 찾거나 생성하도록 목적지 설정
 
         } else if (fromWorld.getName().equals(worldManager.getClanNetherWorldName(clan))) { // 지옥 -> 오버월드
-
-            Location mainPylonLocation = clan.getMainPylonLocationObject();
-            if (mainPylonLocation == null) {
+            event.setCancelled(true); // 기본 포탈 이동 취소
+            clan.getMainPylonLocationObject().ifPresentOrElse(mainPylonLocation -> {
+                // 주 파일런 위치로 목적지 설정. 서버가 주변에서 포탈을 찾거나 생성합니다.
+                Location safePortalLocation = PortalHelper.findOrCreateSafePortal(mainPylonLocation, 16);
+                player.teleport(safePortalLocation);
+            }, () -> {
                 player.sendMessage("§c가문의 파일런 코어 위치를 찾을 수 없어 오버월드로 귀환할 수 없습니다.");
-                event.setCancelled(true);
-                return;
-            }
-
-            // 주 파일런 위치로 목적지 설정. 서버가 주변에서 포탈을 찾거나 생성합니다.
-            // event.setTo() 대신, 직접 텔레포트를 제어하여 안정성을 높입니다.
-            event.setCancelled(true);
-            Location safePortalLocation = PortalHelper.findOrCreateSafePortal(mainPylonLocation, 16);
-            player.teleport(safePortalLocation);
+            });
         }
     }
 }

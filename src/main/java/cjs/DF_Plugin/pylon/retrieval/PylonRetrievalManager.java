@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -54,7 +55,7 @@ public class PylonRetrievalManager {
 
         List<ItemStack> pylonItems = new ArrayList<>();
         // Make a copy to avoid ConcurrentModificationException
-        Map<String, PylonType> pylonLocations = clan.getPylonLocationsMap();
+        Map<String, PylonType> pylonLocations = new HashMap<>(clan.getPylonLocations());
 
         for (Map.Entry<String, PylonType> entry : pylonLocations.entrySet()) {
             String pylonLocStr = entry.getKey();
@@ -77,7 +78,7 @@ public class PylonRetrievalManager {
         clan.clearPylonLocations();
         clan.setLastRetrievalTime(System.currentTimeMillis());
         clan.setLastAuxiliaryRetrievalTime(System.currentTimeMillis());
-        plugin.getClanManager().getStorageManager().saveClan(clan);
+        plugin.getClanManager().saveClanData(clan);
 
         InventoryUtils.giveOrDropItems(leader, pylonItems.toArray(new ItemStack[0]));
         leader.sendMessage(PREFIX + "§a모든 파일런(" + pylonItems.size() + "개)을 회수했습니다.");
@@ -122,7 +123,7 @@ public class PylonRetrievalManager {
 
             clan.removePylonLocation(pylonLocStr);
             clan.setLastAuxiliaryRetrievalTime(System.currentTimeMillis());
-            plugin.getClanManager().getStorageManager().saveClan(clan);
+            plugin.getClanManager().saveClanData(clan);
             plugin.getPylonManager().getAreaManager().removeProtectedPylon(pylonBlock.getLocation());
             plugin.getPylonManager().getStructureManager().removeBaseAndBarrier(pylonBlock.getLocation());
 

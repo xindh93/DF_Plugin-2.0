@@ -1,27 +1,22 @@
 package cjs.DF_Plugin.player.stats;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.data.PlayerDataManager;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.logging.Level;
 
 public class StatsManager {
 
     private final DF_Main plugin;
     private final Map<UUID, MassRegistrationSession> massRegistrationSessions = new HashMap<>();
     private final Map<UUID, PlayerStats> statsCache = new ConcurrentHashMap<>();
-    private final File statsFile;
-    private FileConfiguration statsConfig;
 
     // 전체 스탯 평가를 위한 필드
     private boolean massEvaluationActive = false;
@@ -30,62 +25,48 @@ public class StatsManager {
 
     public StatsManager(DF_Main plugin) {
         this.plugin = plugin;
-        File playersFolder = new File(plugin.getDataFolder(), "players");
-        if (!playersFolder.exists()) {
-            playersFolder.mkdirs();
-        }
-        this.statsFile = new File(playersFolder, "player_stats.yml");
-        loadStats();
+        loadAllData();
     }
 
-    public void loadStats() {
-        if (!statsFile.exists()) {
-            try {
-                statsFile.createNewFile();
-                plugin.getLogger().info("Created a new player_stats.yml file.");
-            } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "Could not create player_stats.yml!", e);
-                return; // 파일 생성 실패 시, 더 진행하지 않음
-            }
-        }
-        statsConfig = YamlConfiguration.loadConfiguration(statsFile);
+    public void loadAllData() {
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
+        FileConfiguration config = pdm.getConfig();
         statsCache.clear();
 
-        ConfigurationSection playersSection = statsConfig.getConfigurationSection("players");
+        ConfigurationSection playersSection = config.getConfigurationSection("players");
         if (playersSection != null) {
             for (String uuidStr : playersSection.getKeys(false)) {
                 try {
                     UUID uuid = UUID.fromString(uuidStr);
-                    PlayerStats stats = new PlayerStats();
-                    for (StatType type : StatType.values()) {
-                        int value = statsConfig.getInt("players." + uuidStr + "." + type.name(), 1);
-                        stats.setStat(type, value);
+                    ConfigurationSection statsSection = playersSection.getConfigurationSection(uuidStr + ".stats");
+                    if (statsSection != null) {
+                        PlayerStats stats = new PlayerStats();
+                        for (StatType type : StatType.values()) {
+                            int value = statsSection.getInt(type.name(), 0);
+                            stats.setStat(type, value);
+                        }
+                        stats.setKills(statsSection.getInt("kills", 0));
+                        stats.setDeaths(statsSection.getInt("deaths", 0));
+                        statsCache.put(uuid, stats);
                     }
-                    stats.setKills(statsConfig.getInt("players." + uuidStr + ".kills", 0));
-                    stats.setDeaths(statsConfig.getInt("players." + uuidStr + ".deaths", 0));
-                    statsCache.put(uuid, stats);
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Invalid UUID in player_stats.yml: " + uuidStr);
+                    plugin.getLogger().warning("Invalid UUID in playerdata.yml: " + uuidStr);
                 }
             }
         }
         plugin.getLogger().info(statsCache.size() + " player stats loaded.");
     }
 
-    public void saveStats() {
+    public void saveAllData() {
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
         for (Map.Entry<UUID, PlayerStats> entry : statsCache.entrySet()) {
             UUID uuid = entry.getKey();
             PlayerStats stats = entry.getValue();
             for (Map.Entry<StatType, Integer> statEntry : stats.getAllStats().entrySet()) {
-                statsConfig.set("players." + uuid.toString() + "." + statEntry.getKey().name(), statEntry.getValue());
+                pdm.getPlayerSection(uuid).set("stats." + statEntry.getKey().name(), statEntry.getValue());
             }
-            statsConfig.set("players." + uuid.toString() + ".kills", stats.getKills());
-            statsConfig.set("players." + uuid.toString() + ".deaths", stats.getDeaths());
-        }
-        try {
-            statsConfig.save(statsFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save player stats to file!", e);
+            pdm.getPlayerSection(uuid).set("stats.kills", stats.getKills());
+            pdm.getPlayerSection(uuid).set("stats.deaths", stats.getDeaths());
         }
     }
 
@@ -94,17 +75,14 @@ public class StatsManager {
      * @param playerUUID 저장할 플레이어의 UUID
      */
     public void savePlayerStats(UUID playerUUID) {
+        PlayerDataManager pdm = plugin.getPlayerDataManager();
         PlayerStats stats = getPlayerStats(playerUUID);
         for (Map.Entry<StatType, Integer> statEntry : stats.getAllStats().entrySet()) {
-            statsConfig.set("players." + playerUUID.toString() + "." + statEntry.getKey().name(), statEntry.getValue());
+            pdm.getPlayerSection(playerUUID).set("stats." + statEntry.getKey().name(), statEntry.getValue());
         }
-        statsConfig.set("players." + playerUUID.toString() + ".kills", stats.getKills());
-        statsConfig.set("players." + playerUUID.toString() + ".deaths", stats.getDeaths());
-        try {
-            statsConfig.save(statsFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save player stats for " + playerUUID, e);
-        }
+        pdm.getPlayerSection(playerUUID).set("stats.kills", stats.getKills());
+        pdm.getPlayerSection(playerUUID).set("stats.deaths", stats.getDeaths());
+        pdm.saveConfig(); // 개별 저장은 즉시 파일에 반영
     }
 
     public PlayerStats getPlayerStats(UUID playerUUID) {
@@ -115,21 +93,13 @@ public class StatsManager {
         statsCache.put(playerUUID, stats);
     }
 
-    public void openEditor(Player editor, Player target) {
-        PlayerStats stats = getPlayerStats(target.getUniqueId());
-        editor.openInventory(StatsEditor.create(target, stats));
-    }
-
     /**
-     * 인벤토리 기반 스탯 편집기(StatsListener)에서 사용하는 스탯 업데이트 메소드입니다.
-     * @param target 스탯이 변경될 플레이어
-     * @param type 변경할 스탯 종류
-     * @param increment 증가(true) 또는 감소(false)
+     * 플레이어의 스탯 데이터가 캐시에 존재하는지 확인합니다.
+     * @param playerUUID 확인할 플레이어의 UUID
+     * @return 스탯이 존재하면 true
      */
-    public void updateStatFromGUI(Player target, StatType type, boolean increment) {
-        PlayerStats stats = getPlayerStats(target.getUniqueId());
-        int currentValue = stats.getStat(type);
-        stats.setStat(type, increment ? currentValue + 1 : currentValue - 1);
+    public boolean hasStats(UUID playerUUID) {
+        return statsCache.containsKey(playerUUID);
     }
 
     public void incrementKills(UUID playerUUID) {
@@ -146,28 +116,26 @@ public class StatsManager {
             return;
         }
 
-        // 1. 평가자 목록 생성 (온라인 + 권한 보유)
+        // 1. 평가자 목록 생성 (모든 온라인 플레이어)
         this.currentEvaluators.clear();
         this.currentEvaluators.addAll(Bukkit.getOnlinePlayers().stream()
-                .filter(p -> p.hasPermission("df.admin.register"))
                 .map(Player::getUniqueId)
                 .collect(Collectors.toList()));
 
-        if (this.currentEvaluators.size() < 2) {
-            editor.sendMessage("§c평균을 내기 위해 평가에 참여할 관리자가 2명 이상 필요합니다.");
+        if (this.currentEvaluators.isEmpty()) {
+            editor.sendMessage("§c평가에 참여할 온라인 플레이어가 없습니다.");
             return;
         }
 
-        // 2. 평가 대상 목록 생성 (스탯이 등록되지 않은 모든 플레이어)
+        // 2. 평가 대상 목록 생성 (기본 스탯을 가진 모든 플레이어)
         List<UUID> targets = plugin.getPlayerRegistryManager().getAllPlayerUUIDs().stream()
                 .filter(uuid -> getPlayerStats(uuid).isDefault())
                 .collect(Collectors.toList());
 
         if (targets.isEmpty()) {
-            editor.sendMessage("§c새로 평가할 플레이어가 없습니다.");
+            editor.sendMessage("§c평가할 대상(기본 스탯 보유자)이 없습니다.");
             return;
         }
-
         // 3. 각 평가자에게 평가 세션 생성 및 시작 알림
         this.massEvaluationActive = true;
         this.pendingEvaluations.clear();
@@ -182,7 +150,7 @@ public class StatsManager {
             personalTargets.remove(evaluatorUUID);
 
             if (personalTargets.isEmpty()) {
-                evaluator.sendMessage("§a평가할 대상이 없습니다.");
+                evaluator.sendMessage("§a평가할 대상이 없습니다. (자신을 제외한 모든 대상이 평가 완료되었거나, 평가 대상이 본인뿐입니다.)");
                 continue;
             }
 
@@ -191,33 +159,9 @@ public class StatsManager {
                 session.setCurrentStats(getPlayerStats(personalTargets.get(0)).clone());
             }
             massRegistrationSessions.put(evaluatorUUID, session);
-            evaluator.sendMessage("§a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 평가가 시작되었습니다.");
+            evaluator.sendMessage("§a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 재평가가 시작되었습니다.");
             displayNextPlayerForRegistration(evaluator);
         }
-    }
-
-    public void startSingleRegistration(Player editor, UUID targetUUID) {
-        if (massEvaluationActive) {
-            editor.sendMessage("§c현재 전체 스탯 평가가 진행 중입니다. 개별 평가는 할 수 없습니다.");
-            return;
-        }
-
-        if (massRegistrationSessions.containsKey(editor.getUniqueId())) {
-            editor.sendMessage("§c이미 스탯 평가를 진행 중입니다. 종료하려면 /dfadmin cancelstat 를 입력하세요.");
-            return;
-        }
-        if (editor.getUniqueId().equals(targetUUID)) {
-            editor.sendMessage("§c자기 자신은 평가할 수 없습니다.");
-            return;
-        }
-
-        List<UUID> targets = Arrays.asList(targetUUID);
-        MassRegistrationSession session = new MassRegistrationSession(editor.getUniqueId(), targets);
-        session.setCurrentStats(getPlayerStats(targetUUID).clone());
-
-        massRegistrationSessions.put(editor.getUniqueId(), session);
-        editor.sendMessage("§a" + Bukkit.getOfflinePlayer(targetUUID).getName() + "님에 대한 스탯 평가를 시작합니다.");
-        displayNextPlayerForRegistration(editor);
     }
 
     private void displayNextPlayerForRegistration(Player editor) {
@@ -260,7 +204,7 @@ public class StatsManager {
             } else {
                 // 단일 평가일 경우, 즉시 저장
                 statsCache.put(currentTargetUUID, session.getCurrentStats());
-                saveStats();
+                savePlayerStats(currentTargetUUID);
                 editor.sendMessage("§a" + Bukkit.getOfflinePlayer(currentTargetUUID).getName() + "님의 스탯을 저장했습니다.");
             }
         }
@@ -299,12 +243,12 @@ public class StatsManager {
 
             for (Map.Entry<StatType, Integer> entry : totalScores.entrySet()) {
                 int average = (int) Math.round((double) entry.getValue() / submissionCount);
-                finalStats.setStat(entry.getKey(), Math.max(1, Math.min(10, average))); // 1~10 범위 보장
+                finalStats.setStat(entry.getKey(), Math.max(1, Math.min(5, average))); // 1~5 범위 보장
             }
 
             // 최종 스탯 저장
             setPlayerStats(targetUUID, finalStats);
-            saveStats();
+            savePlayerStats(targetUUID);
 
             // 임시 데이터 정리
             pendingEvaluations.remove(targetUUID);
@@ -332,10 +276,6 @@ public class StatsManager {
         // This now cancels the entire mass evaluation
         if (!massEvaluationActive) {
             editor.sendMessage("§c진행 중인 전체 스탯 평가가 없습니다.");
-            return;
-        }
-        if (!currentEvaluators.contains(editor.getUniqueId())) {
-            editor.sendMessage("§c현재 진행중인 평가의 참여자가 아니므로 종료할 수 없습니다.");
             return;
         }
 

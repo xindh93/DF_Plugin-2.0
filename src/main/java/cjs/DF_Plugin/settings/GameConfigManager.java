@@ -4,6 +4,7 @@ import cjs.DF_Plugin.DF_Main;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.Difficulty;
+import org.bukkit.Material;
 
 import java.io.File;
 
@@ -48,6 +49,26 @@ public class GameConfigManager {
     // --- Pylon Getters ---
     public int getPylonMaxPerClan() { return config.getInt("pylon.max-pylons-per-clan", 1); }
     public boolean isPylonRequireBelowSeaLevel() { return config.getBoolean("pylon.installation.require-below-sea-level", true); }
+
+    public Material getMainCoreBaseMaterial() {
+        String materialName = config.getString("pylon.installation.main-core-base-material", "DIAMOND_BLOCK").toUpperCase();
+        try {
+            return Material.valueOf(materialName);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid material name for 'pylon.installation.main-core-base-material': " + materialName + ". Defaulting to DIAMOND_BLOCK.");
+            return Material.DIAMOND_BLOCK;
+        }
+    }
+
+    public Material getAuxiliaryCoreBaseMaterial() {
+        String materialName = config.getString("pylon.installation.auxiliary-core-base-material", "IRON_BLOCK").toUpperCase();
+        try {
+            return Material.valueOf(materialName);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid material name for 'pylon.installation.auxiliary-core-base-material': " + materialName + ". Defaulting to IRON_BLOCK.");
+            return Material.IRON_BLOCK;
+        }
+    }
     public boolean isPylonAllyBuffEnabled() { return config.getBoolean("pylon.area-effects.ally-buff-enabled", true); }
     public boolean isPylonEnemyDebuffEnabled() { return config.getBoolean("pylon.area-effects.enemy-debuff-enabled", true); }
     public String getPylonRecruitmentMode() { return config.getString("pylon.recruitment.mode", "select"); }
@@ -59,9 +80,9 @@ public class GameConfigManager {
     public boolean isPylonReconEnabled() { return config.getBoolean("pylon.recon-firework.enabled", true); }
     public int getPylonReconCooldownHours() { return config.getInt("pylon.recon-firework.cooldown-hours", 12); }
     public int getPylonReconReturnMinutes() { return config.getInt("pylon.recon-firework.return-duration-minutes", 1); }
-    public int getPylonGiftboxCooldownHours() { return config.getInt("pylon.giftbox.cooldown-hours", 4); }
-    public int getPylonGiftboxMinSets() { return config.getInt("pylon.giftbox.min-reward-sets", 4); }
-    public int getPylonGiftboxMaxSets() { return config.getInt("pylon.giftbox.max-reward-sets", 8); }
+    public int getPylonGiftboxCooldownMinutes() { return config.getInt("pylon.giftbox.cooldown-minutes", 5); }
+    public int getPylonGiftboxMinItems() { return config.getInt("pylon.giftbox.min-reward-items", 1); }
+    public int getPylonGiftboxMaxItems() { return config.getInt("pylon.giftbox.max-reward-items", 10); }
     public int getReturnScrollCastTime() { return config.getInt("pylon.return-scroll.cast-time-seconds", 5); }
     public boolean isReturnScrollAllowedInNether() { return config.getBoolean("pylon.return-scroll.allow-in-nether", true); }
     public boolean isReturnScrollAllowedInEnd() { return config.getBoolean("pylon.return-scroll.allow-in-end", true); }

@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.pylon.beacongui;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.items.ItemBuilder;
 import cjs.DF_Plugin.clan.Clan;
 import cjs.DF_Plugin.pylon.beacongui.giftbox.GiftBoxGuiManager;
 import cjs.DF_Plugin.pylon.beacongui.shop.PylonShopManager;
@@ -53,23 +54,10 @@ public class BeaconGUIManager {
         // 아이템 생성 및 배치
         gui.setItem(0, createGuiItem(Material.ENDER_CHEST, "§e파일런 창고", "pylon_storage", "§7가문 공유 창고를 엽니다."));
         gui.setItem(2, createGuiItem(Material.BEACON, "§6파일런 상점", "shop", "§7다양한 아이템을 구매합니다."));
-        gui.setItem(4, createGuiItem(Material.PLAYER_HEAD, "§a팀원 뽑기", "recruit", "§7새로운 팀원을 영입합니다."));
+        gui.setItem(4, createGuiItem(Material.DIAMOND, "§a팀원 뽑기", "recruit", "§7새로운 팀원을 영입합니다."));
         gui.setItem(6, createGuiItem(Material.TOTEM_OF_UNDYING, "§d팀원 부활", "resurrect", "§7사망한 팀원을 부활시킵니다."));
 
-        // 선물상자 아이템 (동적 Lore)
-        ItemStack giftBox = new ItemStack(Material.CHEST);
-        ItemMeta giftMeta = giftBox.getItemMeta();
-        giftMeta.setDisplayName("§6선물상자");
-        long cooldownMillis = TimeUnit.HOURS.toMillis(plugin.getGameConfigManager().getConfig().getInt("pylon.giftbox.cooldown-hours", 4));        long timePassed = System.currentTimeMillis() - clan.getLastGiftBoxTime();
-        if (timePassed >= cooldownMillis) {
-            giftMeta.setLore(Arrays.asList("§a선물이 도착했습니다!", "§7리더만 열 수 있습니다."));
-        } else {
-            long remainingMillis = cooldownMillis - timePassed;
-            String timeString = PluginUtils.formatTime(remainingMillis);
-            giftMeta.setLore(Arrays.asList("§7다음 선물이 도착하기까지:", "§e" + timeString, "§7리더만 열 수 있습니다."));
-        }
-        giftMeta.getPersistentDataContainer().set(GUI_BUTTON_KEY, PersistentDataType.STRING, "giftbox");        giftBox.setItemMeta(giftMeta);
-        gui.setItem(8, giftBox);
+        gui.setItem(8, createGiftBoxItem(clan));
 
         player.openInventory(gui);
     }
@@ -89,6 +77,30 @@ public class BeaconGUIManager {
         }
         return item;
     }
+
+    ItemStack createGiftBoxItem(Clan clan) {
+        long cooldownMillis = plugin.getGameConfigManager().getConfig().getLong("pylon.giftbox.cooldown-minutes", 5) * 60 * 1000;
+        long lastUsed = clan.getLastGiftBoxTime();
+
+        ItemBuilder builder = new ItemBuilder(Material.CHEST)
+                .withName("§6선물상자")
+                .withPDCString(GUI_BUTTON_KEY, "giftbox");
+
+        if (lastUsed == 0) {
+            // 보충 작업이 아직 실행되지 않은 초기 상태
+            builder.addLoreLine("§7다음 선물 보충까지: §e--:--");
+        } else {
+            long nextRefillTime = lastUsed + cooldownMillis;
+            long remainingMillis = Math.max(0, nextRefillTime - System.currentTimeMillis());
+            String timeFormatted = String.format("%02d:%02d", (remainingMillis / 1000) / 60, (remainingMillis / 1000) % 60);
+            builder.addLoreLine("§7다음 선물 보충까지:");
+            builder.addLoreLine("§e" + timeFormatted);
+        }
+
+        builder.addLoreLine("§7클릭하여 내용물을 확인하세요.");
+        return builder.build();
+    }
+
 
     public void handleMenuClick(Player player, String action) {
         GameConfigManager configManager = plugin.getGameConfigManager();

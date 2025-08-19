@@ -10,12 +10,15 @@ import cjs.DF_Plugin.util.InventoryUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.Sound;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.concurrent.TimeUnit;
@@ -43,7 +46,15 @@ public class PylonShopManager {
             long timeSinceLastRecon = System.currentTimeMillis() - clan.getLastReconFireworkTime();
             int reconCost = config.getInt("pylon.shop.recon-firework.cost-level", 50);
 
-            ItemBuilder reconBuilder = new ItemBuilder(Material.FIREWORK_ROCKET)
+            // 정찰용 폭죽 아이템을 생성하고 커스터마이징합니다.
+            ItemStack reconFirework = new ItemStack(Material.FIREWORK_ROCKET);
+            FireworkMeta fwm = (FireworkMeta) reconFirework.getItemMeta();
+            fwm.setPower(0); // '체공 시간' 로어를 제거합니다.
+            fwm.addEnchant(Enchantment.LURE, 1, true); // 반짝이는 효과를 위해 인챈트를 추가합니다.
+            fwm.addItemFlags(ItemFlag.HIDE_ENCHANTS); // 인챈트 정보를 숨깁니다.
+            reconFirework.setItemMeta(fwm);
+
+            ItemBuilder reconBuilder = new ItemBuilder(reconFirework)
                     .withName("§b정찰용 폭죽 구매")
                     .withLore(
                             "§7하늘 높이 날아올라 주변을 정찰합니다.",
@@ -160,7 +171,7 @@ public class PylonShopManager {
         if (player.getLevel() >= requiredLevels) {
             player.setLevel(player.getLevel() - requiredLevels);
             InventoryUtils.giveOrDropItems(player, reward);
-            player.playSound(player.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 1.2f);
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.5f);
         } else {
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
         }

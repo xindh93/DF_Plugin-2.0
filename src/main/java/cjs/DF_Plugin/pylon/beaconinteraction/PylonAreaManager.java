@@ -6,18 +6,24 @@ import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Particle;
+import org.bukkit.Material;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -110,14 +116,14 @@ public class PylonAreaManager {
             // 기반 블록(y-1의 3x3 영역)인지 확인
             if (blockLocation.getBlockY() == pylonLoc.getBlockY() - 1) {
                 if (Math.abs(blockLocation.getBlockX() - pylonLoc.getBlockX()) <= 1 &&
-                    Math.abs(blockLocation.getBlockZ() - pylonLoc.getBlockZ()) <= 1) {
+                        Math.abs(blockLocation.getBlockZ() - pylonLoc.getBlockZ()) <= 1) {
                     return true;
                 }
             }
             // 배리어 블록(비콘 위 수직 기둥)인지 확인
             if (blockLocation.getBlockX() == pylonLoc.getBlockX() &&
-                blockLocation.getBlockZ() == pylonLoc.getBlockZ() &&
-                blockLocation.getBlockY() > pylonLoc.getBlockY()) {
+                    blockLocation.getBlockZ() == pylonLoc.getBlockZ() &&
+                    blockLocation.getBlockY() > pylonLoc.getBlockY()) {
                 return true;
             }
         }
@@ -140,10 +146,9 @@ public class PylonAreaManager {
         int radiusSquared = radius * radius;
 
         // 아군에게 적용할 효과
-        final PotionEffect allySaturation = new PotionEffect(PotionEffectType.SATURATION, 120, 0, true, true);
-        final PotionEffect allyHaste = new PotionEffect(PotionEffectType.HASTE, 120, 1, true, true); // 성급함 2
+        final PotionEffect allyHaste = new PotionEffect(PotionEffectType.HASTE, 120, 1, true, false); // 성급함 2, 파티클 숨김
         // 적군에게 적용할 효과
-        final PotionEffect enemySlowness = new PotionEffect(PotionEffectType.SLOWNESS, 120, 1, true, true); // 구속 2
+        final PotionEffect enemySlowness = new PotionEffect(PotionEffectType.SLOWNESS, 120, 0, true, true); // 구속 1
         final PotionEffect enemyFatigue = new PotionEffect(PotionEffectType.MINING_FATIGUE, 120, 1, true, true); // 채굴 피로 2
         final PotionEffect enemyGlowing = new PotionEffect(PotionEffectType.GLOWING, 120, 0, true, true); // 발광
 
@@ -166,7 +171,10 @@ public class PylonAreaManager {
                 if (clan.getMembers().contains(player.getUniqueId())) {
                     // 아군일 경우: 버프 적용
                     if (allyBuffEnabled) {
-                        player.addPotionEffect(allySaturation);
+                        // 배고픔이 19 (반 칸 남음) 미만일 때만 채워줍니다.
+                        if (player.getFoodLevel() < 19) {
+                            player.setFoodLevel(19);
+                        }
                         player.addPotionEffect(allyHaste);
                     }
                 } else {
@@ -201,7 +209,7 @@ public class PylonAreaManager {
         int radius = configManager.getConfig().getInt("pylon.area-effects.radius", 50);
         int radiusSquared = radius * radius;
 
-        return clan.getPylonLocations().stream().anyMatch(pylonLocStr -> {
+        return clan.getPylonLocations().keySet().stream().anyMatch(pylonLocStr -> {
             Location pylonLoc = PluginUtils.deserializeLocation(pylonLocStr);
             // 월드가 같고, Y축을 무시한 2D 거리가 반경 이내인지 확인
             return pylonLoc != null && pylonLoc.getWorld() != null && pylonLoc.getWorld().equals(location.getWorld()) && distanceSquared2D(location, pylonLoc) <= radiusSquared;
@@ -218,12 +226,56 @@ public class PylonAreaManager {
         int radius = configManager.getConfig().getInt("pylon.area-effects.radius", 50);
         int radiusSquared = radius * radius;
 
-        return clan.getPylonLocations().stream()
-                .filter(pylonLocStr -> clan.getPylonType(pylonLocStr) == PylonType.MAIN_CORE) // 주 파일런만 필터링
-                .anyMatch(pylonLocStr -> {
-                    Location pylonLoc = PluginUtils.deserializeLocation(pylonLocStr);
+        return clan.getPylonLocations().entrySet().stream()
+                .filter(entry -> entry.getValue() == PylonType.MAIN_CORE) // 주 파일런만 필터링
+                .anyMatch(entry -> {
+                    Location pylonLoc = PluginUtils.deserializeLocation(entry.getKey());
                     return pylonLoc != null && pylonLoc.getWorld() != null && pylonLoc.getWorld().equals(location.getWorld()) && distanceSquared2D(location, pylonLoc) <= radiusSquared;
                 });
+    }
+
+    /**
+     * 클랜의 파일런 영역 내에서 안전한 스폰 위치를 찾습니다.
+     * @param clan 스폰 위치를 찾을 클랜
+     * @return 안전한 스폰 위치 (Optional)
+     */
+    public Optional<Location> findSafeSpawnInPylonArea(Clan clan) {
+        if (clan.getPylonLocations().isEmpty()) {
+            return Optional.empty();
+        }
+        // Get a random pylon location string
+        List<String> pylonLocStrings = new ArrayList<>(clan.getPylonLocations().keySet());
+        String randomPylonLocStr = pylonLocStrings.get(new Random().nextInt(pylonLocStrings.size()));
+        Location pylonCenter = PluginUtils.deserializeLocation(randomPylonLocStr);
+
+        if (pylonCenter == null) {
+            return Optional.empty();
+        }
+
+        int radius = configManager.getPylonAreaEffectRadius();
+        Random random = new Random();
+        World world = pylonCenter.getWorld();
+
+        for (int i = 0; i < 100; i++) { // 100 attempts
+            int xOffset = random.nextInt(radius * 2 + 1) - radius;
+            int zOffset = random.nextInt(radius * 2 + 1) - radius;
+
+            if (xOffset * xOffset + zOffset * zOffset > radius * radius) {
+                continue;
+            }
+
+            Block groundBlock = world.getHighestBlockAt(pylonCenter.getBlockX() + xOffset, pylonCenter.getBlockZ() + zOffset);
+
+            if (groundBlock.isLiquid() || groundBlock.getType() == Material.BARRIER || !groundBlock.getType().isSolid()) {
+                continue;
+            }
+
+            if (groundBlock.getRelative(BlockFace.UP).isPassable() && groundBlock.getRelative(BlockFace.UP, 2).isPassable()) {
+                return Optional.of(groundBlock.getLocation().add(0.5, 1.0, 0.5));
+            }
+        }
+        // Fallback to pylon center
+        return Optional.of(pylonCenter.getWorld().getHighestBlockAt(pylonCenter).getLocation().add(0.5, 1, 0.5));
     }
 
     /**

@@ -31,7 +31,7 @@ public class PylonFeatureManager {
 
         for (Clan clan : plugin.getClanManager().getAllClans()) {
             List<String> pylonsToRemove = new ArrayList<>();
-            for (String pylonLocStr : clan.getPylonLocations()) {
+            for (String pylonLocStr : clan.getPylonLocations().keySet()) {
                 if (clan.getPylonType(pylonLocStr) == PylonType.AUXILIARY) {
                     pylonsToRemove.add(pylonLocStr);
                 }
@@ -52,7 +52,7 @@ public class PylonFeatureManager {
                 }
                 clan.removePylonLocation(pylonLocStr);
             }
-            plugin.getClanManager().getStorageManager().saveClan(clan);
+            plugin.getClanManager().saveClanData(clan);
             clan.broadcastMessage(PluginUtils.colorize("&d[보조 파일런] &f서버 설정 변경으로 모든 보조 파일런이 회수되어 파일런 창고에 보관되었습니다."));
         }
 

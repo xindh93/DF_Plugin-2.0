@@ -2,6 +2,7 @@ package cjs.DF_Plugin.pylon.beacongui.recon;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
@@ -9,14 +10,13 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
@@ -38,6 +38,7 @@ public class ReconManager implements Listener {
     private final DF_Main plugin;
     private final Map<UUID, ReconState> reconPlayers = new ConcurrentHashMap<>(); // Leader UUID -> State
     private final Map<UUID, List<UUID>> reconParties = new ConcurrentHashMap<>(); // Leader UUID -> List of all party members' UUIDs
+    private final Map<UUID, ItemStack> originalChestplates = new ConcurrentHashMap<>(); // Player UUID -> Original Chestplate
     private final Map<UUID, Long> returnTimers = new ConcurrentHashMap<>(); // Leader UUID -> Teleport Timestamp
     private static final String PREFIX = PluginUtils.colorize("&c[정찰] &f");
 
@@ -63,7 +64,7 @@ public class ReconManager implements Listener {
 
         // 3. Check cooldown
         long cooldownMillis = TimeUnit.HOURS.toMillis(config.getConfig().getInt("pylon.recon-firework.cooldown-hours", 12));
-        long lastUsed = clan.getLastReconFireworkTime();
+        long lastUsed = clan.getLastFireworkTime();
         if (System.currentTimeMillis() - lastUsed < cooldownMillis) {
             long remainingMillis = cooldownMillis - (System.currentTimeMillis() - lastUsed);
             String remainingTime = String.format("%02d시간 %02d분",
@@ -73,35 +74,26 @@ public class ReconManager implements Listener {
             return;
         }
 
-        // 4. Check if chestplate slot is empty
-        ItemStack chestplate = player.getInventory().getChestplate();
-        if (chestplate != null && !chestplate.getType().isAir()) {
-            player.sendMessage(PREFIX + "겉날개를 장착하려면 갑옷 칸을 비워야 합니다.");
-            return;
-        }
-
         // All checks passed, activate recon mode
+        // 갑옷 체크를 제거하고, launchPlayer에서 갑옷을 임시 보관하도록 변경합니다.
         player.closeInventory();
-        player.getInventory().setChestplate(createReconElytra());
-        clan.setLastReconFireworkTime(System.currentTimeMillis());
-        plugin.getClanManager().getStorageManager().saveClan(clan);
+        clan.setLastFireworkTime(System.currentTimeMillis());
+        plugin.getClanManager().saveClanData(clan);
         reconPlayers.put(player.getUniqueId(), ReconState.READY_TO_LAUNCH);
 
         player.sendMessage(PREFIX + "정찰 모드가 활성화되었습니다. 점프하여 발사하세요!");
     }
 
     @EventHandler
-    public void onPlayerJump(PlayerMoveEvent event) {
+    public void onPlayerJump(PlayerJumpEvent event) {
         Player player = event.getPlayer();
         if (!reconPlayers.containsKey(player.getUniqueId()) || reconPlayers.get(player.getUniqueId()) != ReconState.READY_TO_LAUNCH) {
             return;
         }
 
-        // 점프를 감지합니다. 플레이어가 땅에 붙어있을 때(fallDistance == 0) Y축 속도가 양수이면 점프로 간주합니다.
-        // 기존의 player.isOnGround() 조건은 점프 직후 false가 되어 감지가 어려웠습니다.
-        if (player.getVelocity().getY() > 0.1 && player.getFallDistance() == 0.0f) {
-            launchPlayer(player);
-        }
+        // PlayerJumpEvent는 점프 시 한 번만 발생하므로, 복잡한 속도/거리 체크가 필요 없습니다.
+        // 또한, launchPlayer가 중복 호출되는 것을 근본적으로 방지하여 NullPointerException을 해결합니다.
+        launchPlayer(player);
     }
 
     private void launchPlayer(Player leader) {
@@ -121,60 +113,44 @@ public class ReconManager implements Listener {
                 .filter(p -> p.getWorld().equals(leader.getWorld()) && p.getLocation().distanceSquared(leader.getLocation()) <= radiusSquared)
                 .forEach(party::add);
 
-        List<UUID> validPartyUUIDs = new ArrayList<>();
-        Location launchLocation = leader.getLocation(); // 발사 기준점
-
-        // 1. 참여 가능한 멤버를 필터링합니다.
+        // 2. 파티원들에게 겉날개를 지급하고, 플레이어 타워를 만듭니다.
+        Player vehicle = leader; // 스택의 가장 아래는 항상 리더입니다.
         for (Player member : party) {
-            ItemStack chest = member.getInventory().getChestplate();
-
-            if (!member.equals(leader) && chest != null && !chest.getType().isAir()) {
-                member.sendMessage(PREFIX + "갑옷을 벗지 않아 정찰에 참여할 수 없습니다.");
-                leader.sendMessage(PREFIX + member.getName() + "님이 갑옷을 입고 있어 정찰에 참여하지 못했습니다.");
-                continue; // 이 멤버는 파티에서 제외
-            }
-            validPartyUUIDs.add(member.getUniqueId());
-        }
-
-        // 2. 유효한 파티원들을 텔레포트 및 발사 준비시킵니다.
-        for (int i = 0; i < validPartyUUIDs.size(); i++) {
-            Player member = Bukkit.getPlayer(validPartyUUIDs.get(i));
-            if (member == null) continue;
-
             reconPlayers.put(member.getUniqueId(), ReconState.IN_AIR);
+
+            // 기존 갑옷을 저장하고 정찰용 겉날개로 교체합니다.
+            ItemStack originalChestplate = member.getInventory().getChestplate();
+            if (originalChestplate != null && !originalChestplate.getType().isAir()) {
+                originalChestplates.put(member.getUniqueId(), originalChestplate.clone());
+            } // [오류 수정] 갑옷이 없으면 맵에 아무것도 넣지 않습니다. ConcurrentHashMap은 null 값을 허용하지 않아 NullPointerException의 원인이 됩니다.
             member.getInventory().setChestplate(createReconElytra());
 
-            // 리더가 아닌 멤버들을 리더 위로 텔레포트하여 쌓습니다.
+            // 리더가 아닌 멤버들을 태웁니다.
             if (!member.equals(leader)) {
-                member.teleport(launchLocation.clone().add(0, i * 1.2, 0));
+                vehicle.addPassenger(member);
+                vehicle = member; // 다음 플레이어가 탈 수 있도록 vehicle을 현재 멤버로 업데이트
             }
         }
 
-        // 3. 모든 파티원이 위치한 후, 동시에 발사 효과를 적용합니다.
-        leader.getWorld().playSound(launchLocation, org.bukkit.Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.5f, 1.0f);
+        // 3. 리더(스택의 가장 아래)에게만 발사 효과를 적용합니다.
+        leader.getWorld().playSound(leader.getLocation(), org.bukkit.Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.5f, 1.0f);
+        leader.setVelocity(new org.bukkit.util.Vector(0, 4, 0));
 
-        for (UUID memberUUID : validPartyUUIDs) {
-            Player member = Bukkit.getPlayer(memberUUID);
-            if (member == null) continue;
-            
-            // 위쪽으로 강한 벡터를 적용하여 발사되는 느낌을 줍니다.
-            member.setVelocity(new org.bukkit.util.Vector(0, 4, 0));
+        // 4. 모든 파티원을 활공 상태로 만듭니다.
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                party.stream()
+                        .filter(p -> p.isOnline() && !p.isOnGround())
+                        .forEach(p -> p.setGliding(true));
+            }
+        }.runTaskLater(plugin, 5L); // 약간의 지연을 주어 안정적으로 활공 상태가 되도록 합니다.
 
-            // 1틱 후에 활공 상태로 만듭니다.
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (member.isOnline() && !member.isOnGround()) {
-                        member.setGliding(true);
-                    }
-                }
-            }.runTaskLater(plugin, 1L);
+        party.forEach(p -> p.sendMessage(PREFIX + "발사!"));
 
-            member.sendMessage(PREFIX + "발사!");
-        }
-
-        if (validPartyUUIDs.size() > 1) {
-            reconParties.put(leader.getUniqueId(), validPartyUUIDs);
+        if (party.size() > 1) {
+            List<UUID> partyUUIDs = party.stream().map(Player::getUniqueId).toList();
+            reconParties.put(leader.getUniqueId(), partyUUIDs);
         }
     }
 
@@ -204,6 +180,9 @@ public class ReconManager implements Listener {
         List<UUID> partyUUIDs = reconParties.remove(leader.getUniqueId());
         if (partyUUIDs == null) return; // 이미 처리된 경우
 
+        // 플레이어 타워를 해체합니다.
+        dismountStack(leader);
+
         int returnMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.recon-firework.return-duration-minutes", 1);
 
         for (UUID memberUUID : partyUUIDs) {
@@ -213,7 +192,7 @@ public class ReconManager implements Listener {
 
             Player member = Bukkit.getPlayer(memberUUID);
             if (member != null) {
-                member.getInventory().setChestplate(null); // 겉날개 제거
+                restoreChestplate(member); // 기존 갑옷 복원
                 member.sendMessage(PREFIX + "착지했습니다. " + returnMinutes + "분 후에 파일런으로 귀환합니다.");
             }
         }
@@ -225,8 +204,30 @@ public class ReconManager implements Listener {
      */
     private void handlePassengerLanding(Player passenger) {
         reconPlayers.put(passenger.getUniqueId(), ReconState.LANDED);
-        passenger.getInventory().setChestplate(null); // 겉날개 제거
+        restoreChestplate(passenger); // 기존 갑옷 복원
         passenger.sendMessage(PREFIX + "착지했습니다. 가문 대표가 착지하면 귀환 타이머가 시작됩니다.");
+    }
+
+    /**
+     * 재귀적으로 엔티티에 탑승한 모든 플레이어를 내리게 합니다.
+     * @param vehicle 탑승 스택의 가장 아래 엔티티
+     */
+    private void dismountStack(Entity vehicle) {
+        if (vehicle == null || vehicle.getPassengers().isEmpty()) {
+            return;
+        }
+
+        // ConcurrentModificationException을 피하기 위해 리스트 복사
+        List<Entity> passengers = new ArrayList<>(vehicle.getPassengers());
+        for (Entity passenger : passengers) {
+            dismountStack(passenger); // 스택의 더 위에 있는 승객부터 내리게 함
+            vehicle.removePassenger(passenger);
+        }
+    }
+
+    private void restoreChestplate(Player player) {
+        ItemStack original = originalChestplates.remove(player.getUniqueId());
+        player.getInventory().setChestplate(original); // original이 null일 수 있으며, 이는 정상입니다.
     }
 
     private void startReturnTask() {
@@ -243,7 +244,7 @@ public class ReconManager implements Listener {
                             // 귀환 시점에는 reconPlayers 맵에서 제거되었을 수 있으므로, 상태와 무관하게 귀환 처리
                             Clan clan = plugin.getClanManager().getClanByPlayer(entry.getKey());
                             if (clan != null && !clan.getPylonLocations().isEmpty()) {
-                                String locString = clan.getPylonLocations().iterator().next();
+                                String locString = clan.getPylonLocations().keySet().iterator().next();
                                 Location pylonLoc = PluginUtils.deserializeLocation(locString);
                                 if (pylonLoc != null) {
                                     player.teleport(pylonLoc.add(0.5, 1, 0.5));

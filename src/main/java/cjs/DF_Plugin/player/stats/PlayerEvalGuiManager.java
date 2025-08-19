@@ -44,12 +44,32 @@ public class PlayerEvalGuiManager {
                 .withSkullOwner(player)
                 .withName("§a" + player.getName())
                 .addLoreLine(" ")
-                .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ATTACK)))
-                .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.INTELLIGENCE)))
-                .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.STAMINA)))
-                .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ENTERTAINMENT)))
+                .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + getStars(stats.getStat(StatType.ATTACK)))
+                .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + getStars(stats.getStat(StatType.INTELLIGENCE)))
+                .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + getStars(stats.getStat(StatType.STAMINA)))
+                .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + getStars(stats.getStat(StatType.ENTERTAINMENT)))
                 .addLoreLine(" ")
                 .addLoreLine("§e전투력: " + String.format("%.2f", stats.getCombatPower()))
                 .build();
+    }
+
+    /**
+     * 스탯 레벨을 5개의 별(채워진 별 + 빈 별)로 변환하여 반환합니다.
+     * @param level 스탯 레벨 (0-5)
+     * @return 별 5개로 구성된 문자열
+     */
+    private String getStars(int level) {
+        StringBuilder stars = new StringBuilder();
+        final int MAX_STARS = 5;
+
+        // 채워진 별 (노란색)
+        for (int i = 0; i < level; i++) {
+            stars.append("§6★");
+        }
+        // 빈 별 (회색)
+        for (int i = level; i < MAX_STARS; i++) {
+            stars.append("§7☆");
+        }
+        return stars.toString();
     }
 }

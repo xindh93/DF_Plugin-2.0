@@ -9,15 +9,10 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.inventory.InventoryOpenEvent;
-import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.*;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.ItemStack;
-
-import java.util.UUID;
 
 public class PylonItemListener implements Listener {
 
@@ -49,54 +44,30 @@ public class PylonItemListener implements Listener {
 
     @EventHandler
     public void onStorePylon(InventoryClickEvent event) {
-        if (event.getClickedInventory() == null || event.getClickedInventory().getType() == InventoryType.PLAYER) {
+        // We are only interested in inventories that are pylon storages.
+        // The title is dynamic, so we check the end part.
+        if (!event.getView().getTitle().endsWith(" §r§f파일런 창고")) {
             return;
         }
 
-        // 파일런 코어(주 파일런)만 보관함에 넣을 수 없도록 제한합니다.
-        ItemStack cursorItem = event.getCursor();
-        ItemStack currentItem = event.getCurrentItem();
+        // Determine the item being moved into the storage.
+        ItemStack movedItem = null;
+        if (event.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY) {
+            // This is a shift-click. We only care if the item is moving from player inv to storage.
+            if (event.getClickedInventory() != null && event.getClickedInventory().getType() == InventoryType.PLAYER) {
+                movedItem = event.getCurrentItem();
+            }
+        } else {
+            // This is a standard click/place action. We only care if the click is inside the storage.
+            if (event.getClickedInventory() != null && event.getClickedInventory().equals(event.getView().getTopInventory())) {
+                movedItem = event.getCursor();
+            }
+        }
 
-        if (PylonItemFactory.isMainCore(cursorItem) || PylonItemFactory.isMainCore(currentItem)) {
-            event.getWhoClicked().sendMessage(PREFIX + "§c파일런 코어는 보관함에 넣을 수 없습니다.");
+        // Check if the item is a main pylon core.
+        if (PylonItemFactory.isMainCore(movedItem)) {
+            event.getWhoClicked().sendMessage(PREFIX + "§c파일런 코어는 파일런 창고에 보관할 수 없습니다.");
             event.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onGiftBoxOpen(InventoryOpenEvent event) {
-        if (!event.getView().getTitle().startsWith("§d[선물상자]")) return;
-
-        Player player = (Player) event.getPlayer();
-        ClanManager clanManager = DF_Main.getInstance().getClanManager();
-        Clan clan = clanManager.getClanByPlayer(player.getUniqueId());
-
-        if (clan != null && event.getView().getTitle().equals("§d[선물상자] §5" + clan.getName())) {
-            UUID viewerId = clanManager.getGiftBoxViewer(clan);
-            // 다른 사람이 이미 보고 있다면
-            if (viewerId != null && !viewerId.equals(player.getUniqueId())) {
-                player.sendMessage("§c다른 가문원이 이미 선물상자를 보고 있습니다.");
-                event.setCancelled(true);
-            } else {
-                // 아무도 안보고 있으면 내가 시청자로 등록
-                clanManager.setGiftBoxViewer(clan, player.getUniqueId());
-            }
-        }
-    }
-
-    @EventHandler
-    public void onGiftBoxClose(InventoryCloseEvent event) {
-        if (!event.getView().getTitle().startsWith("§d[선물상자]")) return;
-
-        Player player = (Player) event.getPlayer();
-        ClanManager clanManager = DF_Main.getInstance().getClanManager();
-        Clan clan = clanManager.getClanByPlayer(player.getUniqueId());
-
-        if (clan != null && event.getView().getTitle().equals("§d[선물상자] §5" + clan.getName())) {
-            // 인벤토리를 닫는 플레이어가 현재 시청자일 경우에만 시청자 목록에서 제거
-            if (player.getUniqueId().equals(clanManager.getGiftBoxViewer(clan))) {
-                clanManager.setGiftBoxViewer(clan, null);
-            }
         }
     }
 }

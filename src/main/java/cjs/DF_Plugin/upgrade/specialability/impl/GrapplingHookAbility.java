@@ -36,7 +36,7 @@ public class GrapplingHookAbility implements ISpecialAbility {
 
     @Override
     public String getDescription() {
-        return "§7우클릭으로 훅을 발사하고, 웅크리기를 사용해 이동합니다.";
+        return "§7훅을 발사하고, 웅크려 이동합니다.";
     }
 
     @Override

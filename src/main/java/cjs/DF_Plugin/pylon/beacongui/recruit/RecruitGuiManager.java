@@ -3,27 +3,27 @@ package cjs.DF_Plugin.pylon.beacongui.recruit;
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.clan.Clan;
 import cjs.DF_Plugin.items.ItemBuilder;
+import cjs.DF_Plugin.items.ItemFactory;
 import cjs.DF_Plugin.player.stats.PlayerStats;
 import cjs.DF_Plugin.player.stats.StatType;
-import cjs.DF_Plugin.player.stats.StatsEditor;
 import cjs.DF_Plugin.player.stats.StatsManager;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
-import cjs.DF_Plugin.settings.GameConfigManager;
 import cjs.DF_Plugin.util.PluginUtils;
-import org.bukkit.Bukkit;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Firework;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.inventory.meta.FireworkMeta;
 
 import java.util.*;
+
 
 public class RecruitGuiManager {
     private final DF_Main plugin;
@@ -58,10 +58,7 @@ public class RecruitGuiManager {
     }
 
     private void openPlayerListGui(Player player, Clan clan) {
-        List<UUID> recruitable = plugin.getPlayerRegistryManager().getRecruitablePlayerUUIDs();
-        // 자기 자신과 현재 가문원은 목록에서 제외
-        recruitable.remove(player.getUniqueId());
-        recruitable.removeAll(clan.getMembers());
+        List<UUID> recruitable = getRecruitablePlayers(player);
 
         Inventory gui = Bukkit.createInventory(null, 27, RECRUIT_GUI_TITLE_SELECT);
 
@@ -78,7 +75,7 @@ public class RecruitGuiManager {
             for (UUID playerUUID : recruitable) {
                 if (gui.firstEmpty() == -1) break; // GUI가 가득 차면 중단
                 OfflinePlayer target = Bukkit.getOfflinePlayer(playerUUID);
-                gui.addItem(createRecruitablePlayerHead(target, totalCost));
+                gui.addItem(createRecruitablePlayerItem(target, totalCost));
             }
         }
 
@@ -108,29 +105,23 @@ public class RecruitGuiManager {
         if (clickedItem == null || !clickedItem.hasItemMeta()) return;
         ItemMeta meta = clickedItem.getItemMeta();
 
-        // 룰렛 시작 버튼 클릭 처리
         if (meta.getPersistentDataContainer().has(BeaconGUIManager.GUI_BUTTON_KEY, PersistentDataType.STRING)) {
-            String action = meta.getPersistentDataContainer().get(BeaconGUIManager.GUI_BUTTON_KEY, PersistentDataType.STRING);
-            if ("start_random_draw".equals(action)) {
-                event.setCancelled(true); // 버튼 클릭 이벤트는 항상 취소
+            String actionData = meta.getPersistentDataContainer().get(BeaconGUIManager.GUI_BUTTON_KEY, PersistentDataType.STRING);
+            if (actionData == null) return;
+
+            if (actionData.equals("start_random_draw")) {
                 handleRouletteStartClick(player, event.getInventory());
                 return;
             }
-        }
 
-        // 플레이어 머리 클릭 처리
-        if (clickedItem.getType() == Material.PLAYER_HEAD && meta instanceof SkullMeta) {
-            // 선택 모드 GUI에서만 영입이 가능하도록 제목을 확인
-            if (RECRUIT_GUI_TITLE_SELECT.equals(viewTitle)) {
-                OfflinePlayer target = ((SkullMeta) meta).getOwningPlayer();
-                if (target != null) {
-                    event.setCancelled(true);
-                    handlePlayerSelectionClick(player, target);
-                }
-            } else if (RECRUIT_GUI_TITLE_ROULETTE.equals(viewTitle)) {
-                // 룰렛 GUI에서는 머리를 클릭해도 아무 일도 일어나지 않도록 이벤트를 취소.
-                event.setCancelled(true);
+            if (actionData.startsWith("recruit_player:")) {
+                if (!RECRUIT_GUI_TITLE_SELECT.equals(viewTitle)) return; // 선택 모드에서만 작동
+                UUID targetUUID = UUID.fromString(actionData.split(":")[1]);
+                OfflinePlayer target = Bukkit.getOfflinePlayer(targetUUID);
+                handlePlayerSelectionClick(player, target);
             }
+        } else if (clickedItem.getType() == Material.PLAYER_HEAD && RECRUIT_GUI_TITLE_ROULETTE.equals(viewTitle)) {
+            // 룰렛 애니메이션 중의 플레이어 머리 클릭은 BeaconGUIListener에서 이미 취소되었으므로 별도 처리가 필요 없습니다.
         }
     }
 
@@ -159,12 +150,7 @@ public class RecruitGuiManager {
 
         // 모든 조건 통과, 영입 진행
         player.getInventory().removeItem(new ItemStack(Material.DIAMOND, totalCost));
-        plugin.getClanManager().addMemberToClan(clan, targetUUID);
-        player.playSound(player.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 1.0f);
-        player.sendMessage(PREFIX + "§a" + targetPlayer.getName() + "님을 새로운 가문원으로 영입했습니다!");
-        if (targetPlayer.isOnline()) {
-            targetPlayer.getPlayer().sendMessage(PREFIX + "§a" + clan.getColor() + clan.getName() + "§a 가문에 영입되었습니다!");
-        }
+        completeRecruitment(player, targetPlayer, clan);
         player.closeInventory();
     }
 
@@ -185,9 +171,7 @@ public class RecruitGuiManager {
             return;
         }
 
-        List<UUID> recruitable = plugin.getPlayerRegistryManager().getRecruitablePlayerUUIDs();
-        recruitable.remove(player.getUniqueId());
-        recruitable.removeAll(clan.getMembers());
+        List<UUID> recruitable = getRecruitablePlayers(player);
 
         if (recruitable.isEmpty()) {
             player.sendMessage(PREFIX + "§c모집할 수 있는 플레이어가 없습니다.");
@@ -200,97 +184,159 @@ public class RecruitGuiManager {
     }
 
     private void startSlotMachineAnimation(Player player, Inventory gui, List<UUID> recruitable) {
+        if (playersInRecruitment.contains(player.getUniqueId())) return;
         playersInRecruitment.add(player.getUniqueId());
-        gui.clear(); // 룰렛 시작 전 GUI를 비움
+        gui.clear(); // "시작" 버튼 제거
 
+        // --- Animation Parameters ---
+        final int ROULETTE_START_SLOT = 9;
+        final int ROULETTE_SLOTS = 9;
+        final int CENTER_SLOT = 13;
+
+        // --- Animation Timing ---
+        final int TOTAL_DURATION_TICKS = 100; // 총 5초
+        final int FINAL_SLOWDOWN_TICKS = 40; // 마지막 2초는 최종 감속 및 결과 표시
+
+        // --- Pre-determine Winner ---
+        final UUID finalRecruitUUID = selectPlayerByWeightedRoulette(recruitable);
+        if (finalRecruitUUID == null) {
+            player.sendMessage(PREFIX + "§c모집할 플레이어를 선택하는 중 오류가 발생했습니다.");
+            playersInRecruitment.remove(player.getUniqueId());
+            player.closeInventory();
+            return;
+        }
+        final OfflinePlayer finalRecruit = Bukkit.getOfflinePlayer(finalRecruitUUID);
+
+        // --- Start Animation ---
         new BukkitRunnable() {
             private int ticks = 0;
-            private int interval = 2;
-            private final int stopTick = 80; // 4초
-            private final Random random = new Random();
+            private int interval = 2; // 초기 빠른 속도
 
             @Override
             public void run() {
-                ticks++;
-
-                if (ticks >= stopTick) {
+                // --- Stop Condition ---
+                if (ticks >= TOTAL_DURATION_TICKS) {
                     this.cancel();
-                    player.playSound(player.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 1.0f);
-
-                    // 최종 선택 (가중치 적용)
-                    UUID finalRecruitUUID = selectPlayerByWeightedRoulette(recruitable);
-                    if (finalRecruitUUID == null) {
-                        player.sendMessage(PREFIX + "§c오류: 최종 팀원을 선택하지 못했습니다.");
-                        playersInRecruitment.remove(player.getUniqueId());
-                        player.closeInventory();
-                        return;
-                    }
-
-                    OfflinePlayer finalRecruit = Bukkit.getOfflinePlayer(finalRecruitUUID);
-                    gui.setItem(13, createPlayerHead(finalRecruit, "§a§l" + finalRecruit.getName() + "!", "§e팀원으로 영입되었습니다!"));
-
-                    Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
-                    if (clan != null) {
-                        plugin.getClanManager().addMemberToClan(clan, finalRecruitUUID);
-                        player.sendMessage(PREFIX + "§a" + finalRecruit.getName() + "님을 새로운 가문원으로 영입했습니다!");
-                        if (finalRecruit.isOnline()) {
-                            finalRecruit.getPlayer().sendMessage(PREFIX + "§a" + clan.getColor() + clan.getName() + "§a 가문에 영입되었습니다!");
-                        }
-                    }
-
-                    playersInRecruitment.remove(player.getUniqueId());
-                    // 3초 후 GUI 닫기
-                    new BukkitRunnable() {
-                        @Override
-                        public void run() {
-                            if (player.getOpenInventory().getTitle().equals(RECRUIT_GUI_TITLE_ROULETTE)) {
-                                player.closeInventory();
-                            }
-                        }
-                    }.runTaskLater(plugin, 60L);
+                    finalizeRecruitment(player, gui, finalRecruit);
                     return;
                 }
 
-                // 시간이 지남에 따라 룰렛 속도 감소
-                if (ticks > 60) interval = 10;
-                else if (ticks > 40) interval = 5;
-                else if (ticks > 20) interval = 3;
+                // --- Adjust Speed (Multi-stage) ---
+                if (ticks > TOTAL_DURATION_TICKS - (FINAL_SLOWDOWN_TICKS / 2)) { // 마지막 1초
+                    interval = 8;
+                } else if (ticks > TOTAL_DURATION_TICKS - FINAL_SLOWDOWN_TICKS) { // 마지막 2초
+                    interval = 5;
+                } else if (ticks > 40) { // 2초 후
+                    interval = 3;
+                }
 
+                // --- Animate ---
                 if (ticks % interval == 0) {
-                    UUID randomUUID = recruitable.get(random.nextInt(recruitable.size()));
-                    gui.setItem(13, createPlayerHead(Bukkit.getOfflinePlayer(randomUUID), "§b???", "§7누가 선택될까요..."));
+                    // Shift items from right to left
+                    for (int i = ROULETTE_START_SLOT; i < ROULETTE_START_SLOT + ROULETTE_SLOTS - 1; i++) {
+                        gui.setItem(i, gui.getItem(i + 1));
+                    }
+
+                    // Add a new random head on the right
+                    UUID randomUUID = recruitable.get(new Random().nextInt(recruitable.size()));
+                    gui.setItem(ROULETTE_START_SLOT + ROULETTE_SLOTS - 1, createPlayerHead(Bukkit.getOfflinePlayer(randomUUID), "§b???", "§7..."));
+
+                    // Play sound
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.5f);
                 }
+                ticks++;
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
-    private ItemStack createRecruitablePlayerHead(OfflinePlayer player, int cost) {
+    private void finalizeRecruitment(Player player, Inventory gui, OfflinePlayer finalRecruit) {
+        // 최종 결과를 중앙에 표시
+        gui.setItem(13, createPlayerHead(finalRecruit, "§a§l" + finalRecruit.getName() + "!", "§e팀원으로 영입되었습니다!"));
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        if (clan != null) {
+            completeRecruitment(player, finalRecruit, clan);
+        }
+
+        playersInRecruitment.remove(player.getUniqueId());
+
+        // 2초 후 GUI 닫기
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (player.getOpenInventory().getTitle().equals(RECRUIT_GUI_TITLE_ROULETTE)) {
+                    player.closeInventory();
+                }
+            }
+        }.runTaskLater(plugin, 40L);
+    }
+
+    private ItemStack createRecruitablePlayerItem(OfflinePlayer player, int cost) {
         StatsManager statsManager = plugin.getStatsManager();
         PlayerStats stats = statsManager.getPlayerStats(player.getUniqueId());
 
-        ItemBuilder builder = new ItemBuilder(Material.PLAYER_HEAD)
-                .withSkullOwner(player)
+        // 오프라인 플레이어의 스킨을 올바르게 로드하기 위해 ItemFactory를 사용합니다.
+        ItemBuilder builder = new ItemBuilder(ItemFactory.createPlayerHead(player.getUniqueId()))
                 .withName("§a" + player.getName())
-                .addLoreLine(" ")
-                .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ATTACK)))
-                .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.INTELLIGENCE)))
-                .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.STAMINA)))
-                .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ENTERTAINMENT)))
-                .addLoreLine(" ")
-                .addLoreLine("§e전투력: " + String.format("%.2f", stats.getCombatPower()));
-        builder.addLoreLine(" ");
-        builder.addLoreLine("§e좌클릭하여 팀원으로 영입");
+                .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + getStars(stats.getStat(StatType.ATTACK)))
+                .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + getStars(stats.getStat(StatType.INTELLIGENCE)))
+                .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + getStars(stats.getStat(StatType.STAMINA)))
+                .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + getStars(stats.getStat(StatType.ENTERTAINMENT)))
+                .addLoreLine(" ");
         builder.addLoreLine("§f비용: §b다이아몬드 " + cost + "개");
+        builder.withPDCString(BeaconGUIManager.GUI_BUTTON_KEY, "recruit_player:" + player.getUniqueId());
         return builder.build();
     }
 
+    /**
+     * 스탯 레벨을 5개의 별(채워진 별 + 빈 별)로 변환하여 반환합니다.
+     * @param level 스탯 레벨 (0-5)
+     * @return 별 5개로 구성된 문자열
+     */
+    private String getStars(int level) {
+        StringBuilder stars = new StringBuilder();
+        final int MAX_STARS = 5;
+
+        // 채워진 별 (노란색)
+        for (int i = 0; i < level; i++) {
+            stars.append("§6★");
+        }
+        // 빈 별 (회색)
+        for (int i = level; i < MAX_STARS; i++) {
+            stars.append("§7☆");
+        }
+        return stars.toString();
+    }
+
     private ItemStack createPlayerHead(OfflinePlayer player, String name, String... lore) {
-        return new ItemBuilder(Material.PLAYER_HEAD)
-                .withSkullOwner(player)
+        // 오프라인 플레이어의 스킨을 올바르게 로드하기 위해 ItemFactory를 사용합니다.
+        return new ItemBuilder(ItemFactory.createPlayerHead(player.getUniqueId()))
                 .withName(name)
                 .withLore(lore)
                 .build();
+    }
+
+    private List<UUID> getRecruitablePlayers(Player recruiter) {
+        final boolean includeDefault = plugin.getGameConfigManager().getConfig().getBoolean("pylon.recruitment.include-default-stats-players", false);
+        final StatsManager statsManager = plugin.getStatsManager();
+        final cjs.DF_Plugin.clan.ClanManager clanManager = plugin.getClanManager();
+
+        List<UUID> allPlayers = plugin.getPlayerRegistryManager().getAllPlayerUUIDs();
+        List<UUID> recruitable = new ArrayList<>();
+
+        for (UUID uuid : allPlayers) {
+            if (uuid.equals(recruiter.getUniqueId())) continue; // 자기 자신 제외
+            if (clanManager.getClanByPlayer(uuid) != null) continue; // 클랜 있는 플레이어 제외
+
+            // 스탯이 기본값(미평가)인지 확인
+            boolean isDefault = statsManager.getPlayerStats(uuid).isDefault();
+
+            // 옵션에 따라 추가
+            if (!isDefault || includeDefault) {
+                recruitable.add(uuid);
+            }
+        }
+        return recruitable;
     }
 
     /**
@@ -328,5 +374,38 @@ public class RecruitGuiManager {
             }
         }
         return recruitable.get(0); // Fallback
+    }
+
+    private void completeRecruitment(Player recruiter, OfflinePlayer recruitedPlayer, Clan clan) {
+        plugin.getClanManager().addMemberToClan(clan, recruitedPlayer.getUniqueId());
+        // 새로 영입된 멤버에게 첫 스폰이 필요하다고 표시하고 저장합니다.
+        clan.addPendingFirstSpawn(recruitedPlayer.getUniqueId());
+        plugin.getClanManager().saveClanData(clan);
+
+        spawnRecruitmentFireworks(recruiter);
+        recruiter.sendMessage(PREFIX + "§a" + recruitedPlayer.getName() + "님을 새로운 가문원으로 영입했습니다!");
+
+        if (recruitedPlayer.isOnline()) {
+            Player onlineTarget = recruitedPlayer.getPlayer();
+            onlineTarget.sendMessage(PREFIX + "§a" + clan.getColor() + clan.getName() + "§a 가문에 영입되었습니다!");
+            onlineTarget.sendMessage("§e다음 접속 시, 가문 파일런 근처에서 시작하게 됩니다.");
+        }
+    }
+
+    private void spawnRecruitmentFireworks(Player player) {
+        Firework fw = player.getWorld().spawn(player.getLocation(), Firework.class);
+        FireworkMeta fwm = fw.getFireworkMeta();
+
+        // 7개의 다양한 효과를 중첩하여 화려한 축하 효과를 만듭니다.
+        fwm.addEffect(FireworkEffect.builder().flicker(true).withColor(Color.AQUA).with(FireworkEffect.Type.BALL).build());
+        fwm.addEffect(FireworkEffect.builder().withColor(Color.LIME).with(FireworkEffect.Type.BALL_LARGE).build());
+        fwm.addEffect(FireworkEffect.builder().withColor(Color.YELLOW).with(FireworkEffect.Type.BURST).build());
+        fwm.addEffect(FireworkEffect.builder().withColor(Color.ORANGE).with(FireworkEffect.Type.STAR).build());
+        fwm.addEffect(FireworkEffect.builder().withColor(Color.RED).with(FireworkEffect.Type.CREEPER).build());
+        fwm.addEffect(FireworkEffect.builder().trail(true).withColor(Color.FUCHSIA).with(FireworkEffect.Type.BALL).build());
+        fwm.addEffect(FireworkEffect.builder().withColor(Color.WHITE).with(FireworkEffect.Type.STAR).build());
+
+        fwm.setPower(2); // 약간 높이 올라가도록 설정
+        fw.setFireworkMeta(fwm);
     }
 }

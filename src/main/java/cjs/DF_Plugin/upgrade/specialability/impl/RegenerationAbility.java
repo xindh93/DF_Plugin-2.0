@@ -17,7 +17,7 @@ public class RegenerationAbility implements ISpecialAbility {
 
     @Override
     public String getDisplayName() {
-        return "§a재생";
+        return "§b재생";
     }
 
     @Override

@@ -33,10 +33,10 @@ public class SuperJumpAbility implements ISpecialAbility {
     }
 
     @Override
-    public String getDisplayName() { return "§b슈퍼 점프"; }
+    public String getDisplayName() { return "§6슈퍼 점프"; }
 
     @Override
-    public String getDescription() { return "§7웅크려 충전 후 높이 도약합니다. 점프 시 낙하 피해를 받지 않으며, 재사용 대기시간이 적용됩니다."; }
+    public String getDescription() { return "§7웅크려 충전 후 높이 도약합니다. "; }
 
     @Override
     public double getCooldown() {
