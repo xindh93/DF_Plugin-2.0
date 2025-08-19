@@ -1,0 +1,10 @@
+dependencyResolutionManagement {
+    // repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) // 저장소 충돌 해결을 위해 임시 주석 처리
+    repositories {
+        gradlePluginPortal() // 플러그인 자체의 의존성을 위해 추가
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'DF_Plugin-2.0'

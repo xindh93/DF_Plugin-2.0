@@ -1,0 +1,37 @@
+plugins {
+    id 'java'
+    // run-paper 플러그인을 사용하여 개발 및 테스트 서버를 관리합니다.
+    id 'xyz.jpenilla.run-paper' version '2.3.1'
+}
+
+group = 'cjs'
+version = 'DF_Plugin-2.0'
+
+// Java 버전 및 인코딩 설정
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// run-paper 플러그인이 Paper API를 자동으로 제공하지만,
+// IDE의 코드 완성을 위해 명시적으로 추가해주는 것이 좋습니다.
+dependencies {
+    compileOnly 'io.papermc.paper:paper-api:1.21-R0.1-SNAPSHOT'
+}
+
+// 테스트 서버 실행을 위한 설정
+runServer {
+    minecraftVersion "1.21"
+    runDirectory.set(file("C:\\Users\\CJS\\Documents\\ServerEngine\\servers\\server_890160838"))
+    systemProperties.put("com.mojang.eula.agree", "true")
+    jvmArgs = ['-Xms2G', '-Xmx2G'] // '='를 사용하여 리스트를 할당합니다.
+}
+
+// 빌드된 jar 파일의 이름과 위치를 지정합니다.
+tasks.jar {
+    archiveFileName = 'DF_Plugin-2.0.jar'
+    destinationDirectory = file('C:\\Users\\CJS\\Documents\\ServerEngine\\servers\\server_890160838\\plugins')
+}

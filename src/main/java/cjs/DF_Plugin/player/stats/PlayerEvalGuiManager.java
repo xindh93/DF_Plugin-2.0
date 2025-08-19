@@ -1,0 +1,55 @@
+package cjs.DF_Plugin.player.stats;
+
+import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.items.ItemBuilder;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+
+public class PlayerEvalGuiManager {
+
+    private final DF_Main plugin;
+    public static final String EVAL_GUI_TITLE = "§b[플레이어 능력치 평가]";
+
+    public PlayerEvalGuiManager(DF_Main plugin) {
+        this.plugin = plugin;
+    }
+
+    public void openEvalGui(Player admin, OfflinePlayer target) {
+        if (target == null) {
+            admin.sendMessage("§c플레이어를 찾을 수 없습니다.");
+            return;
+        }
+
+        Inventory gui = Bukkit.createInventory(null, 27, EVAL_GUI_TITLE + ": " + target.getName());
+        gui.setItem(13, createPlayerEvalHead(target));
+        admin.openInventory(gui);
+    }
+
+    private ItemStack createPlayerEvalHead(OfflinePlayer player) {
+        StatsManager statsManager = plugin.getStatsManager();
+        PlayerStats stats = statsManager.getPlayerStats(player.getUniqueId());
+
+        if (stats == null) {
+            return new ItemBuilder(Material.BARRIER)
+                    .withName("§c" + player.getName() + "님의 스탯 정보 없음")
+                    .addLoreLine("§7해당 플레이어의 스탯 데이터가 존재하지 않습니다.")
+                    .build();
+        }
+
+        return new ItemBuilder(Material.PLAYER_HEAD)
+                .withSkullOwner(player)
+                .withName("§a" + player.getName())
+                .addLoreLine(" ")
+                .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ATTACK)))
+                .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.INTELLIGENCE)))
+                .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.STAMINA)))
+                .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + StatsEditor.getStars(stats.getStat(StatType.ENTERTAINMENT)))
+                .addLoreLine(" ")
+                .addLoreLine("§e전투력: " + String.format("%.2f", stats.getCombatPower()))
+                .build();
+    }
+}
