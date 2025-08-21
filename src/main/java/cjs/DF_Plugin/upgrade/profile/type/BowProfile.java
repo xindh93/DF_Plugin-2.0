@@ -33,6 +33,17 @@ public class BowProfile implements IUpgradeableProfile {
             lore.add("");
             lore.add("§b적 체력에 비례한 추가 피해: " + String.format("%.1f", healthPercentage) + "%");
         }
+
+        // 2. 특수 능력 설정
+        // 능력 키를 아이템에 저장하여 SpecialAbilityListener가 인식할 수 있도록 합니다.
+        meta.getPersistentDataContainer().set(UpgradeManager.SPECIAL_ABILITY_KEY, PersistentDataType.STRING, SUPERCHARGE_ABILITY.getInternalName());
+
+        // 10강 이상일 때만 특수 능력 로어를 추가합니다.
+        if (level >= UpgradeManager.MAX_UPGRADE_LEVEL) {
+            lore.add(""); // 간격
+            lore.add("§f[§b특수능력§f] : " + SUPERCHARGE_ABILITY.getDisplayName());
+            lore.add(SUPERCHARGE_ABILITY.getDescription());
+        }
     }
 
     @Override

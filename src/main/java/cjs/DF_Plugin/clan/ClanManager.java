@@ -229,6 +229,10 @@ public class ClanManager {
         // 흡수된 멤버들의 소속 정보를 잘못 제거하는 것을 방지합니다.
         defender.clearAllMembers();
 
+        // 패배한 가문의 멤버 목록을 비워서, deleteClan 메소드가
+        // 흡수된 멤버들의 소속 정보를 잘못 제거하는 것을 방지합니다.
+        defender.clearAllMembers();
+
         // Remove the defeated clan from the system
         deleteClan(defender);
     }
