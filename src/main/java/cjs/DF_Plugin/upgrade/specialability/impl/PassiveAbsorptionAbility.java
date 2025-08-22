@@ -8,6 +8,7 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
@@ -23,7 +24,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
 
     private final Map<UUID, BukkitTask> activeTasks = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> lastDamageTime = new ConcurrentHashMap<>();
     private final DF_Main plugin = DF_Main.getInstance();
 
     @Override
@@ -55,7 +55,7 @@ public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
 
     @Override
     public boolean showInActionBar() {
-        return true; // 액션바에 충전량(보호막 스택)을 표시합니다.
+        return false; // 액션바에 쿨다운은 표시하지 않고, 충전량(보호막 스택)만 표시합니다.
     }
 
     @Override
@@ -77,7 +77,6 @@ public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
         }
         manager.setChargeVisibility(player, this, true);
 
-        long noDamageDelayMillis = plugin.getGameConfigManager().getConfig().getLong("upgrade.special-abilities.passive_absorption.details.no-damage-delay-seconds", 20) * 1000L;
         long intervalTicks = plugin.getGameConfigManager().getConfig().getLong("upgrade.special-abilities.passive_absorption.details.regen-interval-seconds", 4) * 20L;
 
         BukkitTask task = new BukkitRunnable() {
@@ -90,10 +89,9 @@ public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
                     return;
                 }
 
-                // 피해를 받지 않은 지 20초가 지났는지 확인합니다.
-                long lastDmg = lastDamageTime.getOrDefault(playerUUID, 0L);
-                if (System.currentTimeMillis() - lastDmg < noDamageDelayMillis) {
-                    return; // 아직 대기 시간이므로 재생하지 않습니다.
+                // 능력이 쿨다운 상태(최근에 피해를 받음)인지 확인합니다.
+                if (manager.isOnCooldown(currentPlayer, PassiveAbsorptionAbility.this)) {
+                    return; // 아직 쿨다운이므로 재생성하지 않습니다.
                 }
 
                 SpecialAbilityManager.ChargeInfo currentInfo = manager.getChargeInfo(currentPlayer, PassiveAbsorptionAbility.this);
@@ -116,11 +114,14 @@ public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
         }
         // 액션바에서 충전량 표시를 숨깁니다.
         plugin.getSpecialAbilityManager().setChargeVisibility(player, this, false);
-        lastDamageTime.remove(player.getUniqueId());
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerDamage(EntityDamageEvent event) {
+        // ignoreCancelled = true 옵션으로 인해, 이 이벤트는 다른 능력에 의해 피해가
+        // 이미 취소된 경우에는 호출되지 않습니다.
+        // HIGHEST 우선순위는 다른 대부분의 피해 처리 로직이 실행된 후에 이 코드가 실행되도록 보장합니다.
+
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
@@ -130,13 +131,15 @@ public class PassiveAbsorptionAbility implements ISpecialAbility, Listener {
             return;
         }
 
-        // 피해를 받으면(막아도) 마지막 피해 시간을 갱신하여 재생성 대기 타이머를 초기화합니다.
-        lastDamageTime.put(player.getUniqueId(), System.currentTimeMillis());
-
         SpecialAbilityManager.ChargeInfo chargeInfo = manager.getChargeInfo(player, this);
         if (chargeInfo != null && chargeInfo.current() > 0) {
             event.setCancelled(true);
             manager.setChargeInfo(player, this, chargeInfo.current() - 1, getMaxCharges());
+
+            // 보호막이 피해를 흡수하면, 재생성 대기 시간(쿨다운)을 설정합니다.
+            double noDamageDelaySeconds = plugin.getGameConfigManager().getConfig().getDouble("upgrade.special-abilities.passive_absorption.details.no-damage-delay-seconds", 20.0);
+            manager.setCooldown(player, this, noDamageDelaySeconds);
+
             player.getWorld().playSound(player.getLocation(), Sound.ITEM_TRIDENT_RETURN, 1.0f, 0.8f);
             player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20, 0, false, false));
             player.getWorld().spawnParticle(Particle.TOTEM_OF_UNDYING, player.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.1);

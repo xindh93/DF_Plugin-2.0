@@ -1,7 +1,6 @@
 package cjs.DF_Plugin.upgrade.profile.type;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
 import cjs.DF_Plugin.upgrade.specialability.impl.SuperJumpAbility;
@@ -12,8 +11,9 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,9 +27,7 @@ public class LeggingsProfile implements IUpgradeableProfile {
     private static final UUID HEALTH_MODIFIER_UUID = UUID.fromString("b326b504-0544-449d-a31a-545243b85390");
 
     @Override
-    public void applyAttributes(ItemStack item, ItemMeta meta, int level, List<String> lore) {
-
-
+    public void applyAttributes(ItemStack item, ItemMeta meta, int level) {
         // 1. 아이템의 모든 관련 속성을 초기화합니다.
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR);
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS);
@@ -40,38 +38,41 @@ public class LeggingsProfile implements IUpgradeableProfile {
         applyBaseArmorAttributes(item.getType(), meta);
 
         // 3. 강화 레벨에 따른 추가 체력 보너스를 적용합니다.
-        double healthBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.leggings.health-per-level", 0.0) * level;
+        double healthBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.leggings.health-per-level", 2.0) * level;
         if (healthBonus > 0) {
             AttributeModifier healthModifier = new AttributeModifier(HEALTH_MODIFIER_UUID, "upgrade.maxHealth", healthBonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlot.LEGS);
             meta.addAttributeModifier(Attribute.GENERIC_MAX_HEALTH, healthModifier);
         }
 
-        // --- 로어 표시 수정 ---
         // 4. 기본 속성 표시(녹색 줄)를 숨깁니다.
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+    }
 
-        // 5. 강화 보너스 로어를 추가합니다.
-        lore.removeIf(line -> line.contains("추가 체력:"));
+    @Override
+    public List<String> getPassiveBonusLore(ItemStack item, int level) {
+        double healthBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.leggings.health-per-level", 2.0) * level;
         if (healthBonus > 0) {
-            lore.add("");
-            lore.add("§b추가 체력: +" + String.format("%.0f", healthBonus));
+            return List.of("§b추가 체력: +" + String.format("%.0f", healthBonus));
         }
+        return Collections.emptyList();
+    }
 
-        // 6. 기존에 있을 수 있는 바닐라 스타일 로어를 먼저 제거합니다.
-        lore.removeIf(line -> line.contains("방어") || line.contains("방어 강도") || line.contains("밀치기 저항") || line.contains("최대 체력") || line.contains("다리에 있을 때:"));
+    @Override
+    public List<String> getBaseStatsLore(ItemStack item, int level) {
+        List<String> baseLore = new ArrayList<>();
+        baseLore.add("§7다리에 있을 때:");
 
-        // 7. 바닐라 스타일로 속성 정보를 로어에 직접 추가합니다.
-        lore.add("§7다리에 있을 때:");
-
-        // 로어에 표시할 값을 다시 계산합니다.
         double armor = getBaseArmorAttribute(item.getType(), "armor");
         double toughness = getBaseArmorAttribute(item.getType(), "toughness");
         double knockbackResistance = getBaseArmorAttribute(item.getType(), "knockbackResistance");
+        double healthBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.leggings.health-per-level", 2.0) * level;
 
-        if (armor > 0) lore.add("§2 " + String.format("%.0f", armor) + " 방어");
-        if (toughness > 0) lore.add("§2 " + String.format("%.0f", toughness) + " 방어 강도");
-        if (knockbackResistance > 0) lore.add("§2 " + String.format("%.1f", knockbackResistance) + " 밀치기 저항");
-        if (healthBonus > 0) lore.add("§2 +" + String.format("%.0f", healthBonus) + " 최대 체력");
+        if (armor > 0) baseLore.add("§2 " + String.format("%.0f", armor) + " 방어");
+        if (toughness > 0) baseLore.add("§2 " + String.format("%.0f", toughness) + " 방어 강도");
+        if (knockbackResistance > 0) baseLore.add("§2 " + String.format("%.1f", knockbackResistance) + " 밀치기 저항");
+        if (healthBonus > 0) baseLore.add("§2 +" + String.format("%.0f", healthBonus) + " 최대 체력");
+
+        return baseLore;
     }
 
     private void applyBaseArmorAttributes(Material material, ItemMeta meta) {

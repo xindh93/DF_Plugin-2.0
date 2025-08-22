@@ -2,17 +2,26 @@ package cjs.DF_Plugin.player.stats;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.data.PlayerDataManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-public class StatsManager {
+public class StatsManager implements Listener {
 
     private final DF_Main plugin;
     private final Map<UUID, MassRegistrationSession> massRegistrationSessions = new HashMap<>();
@@ -50,11 +59,11 @@ public class StatsManager {
                         statsCache.put(uuid, stats);
                     }
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Invalid UUID in playerdata.yml: " + uuidStr);
+                    plugin.getLogger().warning("[스탯 관리] Invalid UUID in playerdata.yml: " + uuidStr);
                 }
             }
         }
-        plugin.getLogger().info(statsCache.size() + " player stats loaded.");
+        plugin.getLogger().info("[스탯 관리] " + statsCache.size() + " player stats loaded.");
     }
 
     public void saveAllData() {
@@ -112,7 +121,7 @@ public class StatsManager {
 
     public void startMassRegistration(Player editor) {
         if (massEvaluationActive) {
-            editor.sendMessage("§c이미 전체 스탯 평가가 진행 중입니다. 종료하려면 /dfadmin cancelstat 를 입력하세요.");
+            editor.sendMessage("§c[스탯 평가] §c이미 전체 스탯 평가가 진행 중입니다. 종료하려면 /df admin cancelstat 를 입력하세요.");
             return;
         }
 
@@ -123,17 +132,17 @@ public class StatsManager {
                 .collect(Collectors.toList()));
 
         if (this.currentEvaluators.isEmpty()) {
-            editor.sendMessage("§c평가에 참여할 온라인 플레이어가 없습니다.");
+            editor.sendMessage("§c[스탯 평가] §c평가에 참여할 온라인 플레이어가 없습니다.");
             return;
         }
 
         // 2. 평가 대상 목록 생성 (기본 스탯을 가진 모든 플레이어)
-        List<UUID> targets = plugin.getPlayerRegistryManager().getAllPlayerUUIDs().stream()
+        List<UUID> targets = plugin.getPlayerConnectionManager().getAllPlayerUUIDs().stream()
                 .filter(uuid -> getPlayerStats(uuid).isDefault())
                 .collect(Collectors.toList());
 
         if (targets.isEmpty()) {
-            editor.sendMessage("§c평가할 대상(기본 스탯 보유자)이 없습니다.");
+            editor.sendMessage("§c[스탯 평가] §c평가할 대상(기본 스탯 보유자)이 없습니다.");
             return;
         }
         // 3. 각 평가자에게 평가 세션 생성 및 시작 알림
@@ -150,7 +159,7 @@ public class StatsManager {
             personalTargets.remove(evaluatorUUID);
 
             if (personalTargets.isEmpty()) {
-                evaluator.sendMessage("§a평가할 대상이 없습니다. (자신을 제외한 모든 대상이 평가 완료되었거나, 평가 대상이 본인뿐입니다.)");
+                evaluator.sendMessage("§a[스탯 평가] §a평가할 대상이 없습니다. (자신을 제외한 모든 대상이 평가 완료되었거나, 평가 대상이 본인뿐입니다.)");
                 continue;
             }
 
@@ -159,7 +168,7 @@ public class StatsManager {
                 session.setCurrentStats(getPlayerStats(personalTargets.get(0)).clone());
             }
             massRegistrationSessions.put(evaluatorUUID, session);
-            evaluator.sendMessage("§a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 재평가가 시작되었습니다.");
+            evaluator.sendMessage("§a[스탯 평가] §a총 " + personalTargets.size() + "명의 플레이어에 대한 전체 스탯 재평가가 시작되었습니다.");
             displayNextPlayerForRegistration(evaluator);
         }
     }
@@ -171,14 +180,14 @@ public class StatsManager {
         UUID targetUUID = session.getCurrentPlayer();
         if (targetUUID == null) {
             // This editor has finished their list.
-            editor.sendMessage("§a당신의 스탯 평가를 모두 완료했습니다!");
+            editor.sendMessage("§a[스탯 평가] §a당신의 스탯 평가를 모두 완료했습니다!");
             massRegistrationSessions.remove(editor.getUniqueId());
             checkAndEndMassEvaluation();
             return;
         }
 
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetUUID);
-        StatsChatEditor.sendEditor(editor, target, session.getCurrentStats(), session.getProgress());
+        displayRegistrationEditor(editor, target, session.getCurrentStats(), session.getProgress());
     }
 
     public void updateStatInSession(Player editor, StatType type, int value) {
@@ -195,24 +204,19 @@ public class StatsManager {
 
         UUID currentTargetUUID = session.getCurrentPlayer();
         if (currentTargetUUID != null) {
-            if (massEvaluationActive) {
-                // 전체 평가 중일 경우, 임시 저장소에 스탯 제출
-                pendingEvaluations.computeIfAbsent(currentTargetUUID, k -> new ConcurrentHashMap<>())
-                        .put(editor.getUniqueId(), session.getCurrentStats());
-                editor.sendMessage("§a" + Bukkit.getOfflinePlayer(currentTargetUUID).getName() + "님의 스탯을 제출했습니다.");
-                checkAndFinalizeStats(currentTargetUUID);
-            } else {
-                // 단일 평가일 경우, 즉시 저장
-                statsCache.put(currentTargetUUID, session.getCurrentStats());
-                savePlayerStats(currentTargetUUID);
-                editor.sendMessage("§a" + Bukkit.getOfflinePlayer(currentTargetUUID).getName() + "님의 스탯을 저장했습니다.");
-            }
+            // massEvaluationActive는 startMassRegistration에서 항상 true로 설정되므로,
+            // 세션이 존재한다는 것은 전체 평가가 활성화된 상태임을 의미합니다.
+            // 따라서, 평가 결과를 임시 저장소에 제출합니다.
+            pendingEvaluations.computeIfAbsent(currentTargetUUID, k -> new ConcurrentHashMap<>())
+                    .put(editor.getUniqueId(), session.getCurrentStats());
+            editor.sendMessage("§a[스탯 평가] §a" + Bukkit.getOfflinePlayer(currentTargetUUID).getName() + "님의 스탯을 제출했습니다.");
+            checkAndFinalizeStats(currentTargetUUID);
         }
 
         // 다음 플레이어로 이동
         session.next();
         if (session.isFinished()) {
-            editor.sendMessage("§a당신의 스탯 평가를 모두 완료했습니다!");
+            editor.sendMessage("§a[스탯 평가] §a당신의 스탯 평가를 모두 완료했습니다!");
             massRegistrationSessions.remove(editor.getUniqueId());
             checkAndEndMassEvaluation();
         } else {
@@ -275,11 +279,11 @@ public class StatsManager {
     public void endMassRegistration(Player editor) {
         // This now cancels the entire mass evaluation
         if (!massEvaluationActive) {
-            editor.sendMessage("§c진행 중인 전체 스탯 평가가 없습니다.");
+            editor.sendMessage("§c[스탯 평가] §c진행 중인 전체 스탯 평가가 없습니다.");
             return;
         }
 
-        String message = "§c" + editor.getName() + "님에 의해 전체 스탯 평가가 강제 종료되었습니다.";
+        String message = "§c[스탯 평가] §c" + editor.getName() + "님에 의해 전체 스탯 평가가 강제 종료되었습니다.";
         currentEvaluators.forEach(uuid -> {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) p.sendMessage(message);
@@ -289,5 +293,123 @@ public class StatsManager {
         pendingEvaluations.clear();
         currentEvaluators.clear();
         massEvaluationActive = false;
+    }
+
+    // --- Event Handlers (from StatsListener) ---
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        // 스탯 평가/보기 GUI에서는 아이템을 클릭할 수 없습니다.
+        if (event.getView().getTitle().startsWith(PlayerEvalGuiManager.EVAL_GUI_TITLE)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player victim = event.getEntity();
+        incrementDeaths(victim.getUniqueId());
+
+        Player killer = victim.getKiller();
+        if (killer != null) {
+            incrementKills(killer.getUniqueId());
+            if (!plugin.getGameConfigManager().getConfig().getBoolean("utility.kill-log-enabled", true)) {
+                event.setDeathMessage(null);
+            }
+        }
+    }
+
+    // --- Chat Editor (from StatsChatEditor) ---
+
+    private void displayRegistrationEditor(Player editor, OfflinePlayer target, PlayerStats stats, String progress) {
+        String targetName = target.getName() != null ? target.getName() : "알 수 없는 플레이어";
+
+        editor.sendMessage(" ");
+        editor.sendMessage(Component.text("§8§m                                                                                "));
+        editor.sendMessage(Component.text("  §b§l스탯 평가 §8- §f" + targetName + " §7" + progress));
+        editor.sendMessage(" ");
+
+        for (StatType type : StatType.values()) {
+            TextComponent.Builder builder = Component.text();
+            builder.append(Component.text("  §6» §7" + type.getDisplayName() + ": "));
+            for (int i = 1; i <= 5; i++) {
+                final int value = i;
+                boolean isSet = i <= stats.getStat(type);
+
+                TextComponent star = Component.text(isSet ? "★" : "☆")
+                        .color(isSet ? NamedTextColor.GOLD : NamedTextColor.GRAY)
+                        .clickEvent(ClickEvent.runCommand("/df admin setstat " + type.name().toLowerCase() + " " + value))
+                        .hoverEvent(HoverEvent.showText(Component.text("§6" + value + "점§7으로 설정")));
+                builder.append(star);
+            }
+            // Add a reset button
+            builder.append(Component.space())
+                    .append(Component.text("[초기화]")
+                            .color(NamedTextColor.RED)
+                            .clickEvent(ClickEvent.runCommand("/df admin setstat " + type.name().toLowerCase() + " 0"))
+                            .hoverEvent(HoverEvent.showText(Component.text("§c점수를 0점으로 초기화합니다."))));
+
+            editor.sendMessage(builder.build());
+        }
+
+        editor.sendMessage(" ");
+
+        TextComponent confirmButton = Component.text("  §a§l[ ✓ 확인 및 다음 ]")
+                .clickEvent(ClickEvent.runCommand("/df admin confirmstat"))
+                .hoverEvent(HoverEvent.showText(Component.text("§a현재 평가를 저장하고 다음 대상으로 넘어갑니다.")));
+
+        TextComponent cancelButton = Component.text("  §c§l[ × 평가 취소 ]")
+                .clickEvent(ClickEvent.runCommand("/df admin cancelstat"))
+                .hoverEvent(HoverEvent.showText(Component.text("§c진행 중인 모든 평가를 취소합니다.")));
+
+        editor.sendMessage(confirmButton);
+        editor.sendMessage(cancelButton);
+        editor.sendMessage(Component.text("§8§m                                                                                "));
+        editor.sendMessage(" ");
+    }
+
+    // --- Session Class (from MassRegistrationSession) ---
+
+    /**
+     * '/df register all' 명령어를 통해 여러 플레이어의 스탯을 순차적으로 평가하는 세션을 관리하는 클래스입니다.
+     */
+    private static class MassRegistrationSession {
+        private final UUID editorUUID;
+        private final List<UUID> targets;
+        private int currentIndex = 0;
+        private PlayerStats currentStats;
+
+        public MassRegistrationSession(UUID editorUUID, List<UUID> targets) {
+            this.editorUUID = editorUUID;
+            this.targets = targets;
+        }
+
+        public void next() {
+            currentIndex++;
+        }
+
+        public boolean isFinished() {
+            return currentIndex >= targets.size();
+        }
+
+        public UUID getCurrentPlayer() {
+            if (!isFinished()) {
+                return targets.get(currentIndex);
+            }
+            return null;
+        }
+
+        public PlayerStats getCurrentStats() {
+            return currentStats;
+        }
+
+        public void setCurrentStats(PlayerStats currentStats) {
+            this.currentStats = currentStats;
+        }
+
+        public String getProgress() {
+            int displayIndex = Math.min(currentIndex + 1, targets.size());
+            return "(" + displayIndex + "/" + targets.size() + ")";
+        }
     }
 }

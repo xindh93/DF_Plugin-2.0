@@ -257,20 +257,6 @@ public class RiftManager {
                         altarStateBossBar.setColor(BarColor.RED);
                         Bukkit.broadcastMessage("§d[차원의 균열] §f균열에서 강력한 기운이 감지됩니다!");
                         Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.7f));
-
-                        // Give compasses
-                        for (Player player : Bukkit.getOnlinePlayers()) {
-                            ItemStack compass = new ItemStack(Material.COMPASS);
-                            ItemMeta itemMeta = compass.getItemMeta();
-                            if (itemMeta instanceof org.bukkit.inventory.meta.CompassMeta) {
-                                org.bukkit.inventory.meta.CompassMeta compassMeta = (org.bukkit.inventory.meta.CompassMeta) itemMeta;
-                                compassMeta.setDisplayName("§d균열 위치 나침반");
-                                compassMeta.setLodestone(altarLocation);
-                                compassMeta.setLodestoneTracked(true);
-                                compass.setItemMeta(compassMeta);
-                            }
-                            player.getInventory().addItem(compass);
-                        }
                     } else {
                         // Update countdown progress
                         altarStateBossBar.setProgress(progress);

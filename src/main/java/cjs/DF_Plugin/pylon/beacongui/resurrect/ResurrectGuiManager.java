@@ -1,8 +1,9 @@
 package cjs.DF_Plugin.pylon.beacongui.resurrect;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.items.ItemFactory;
+import cjs.DF_Plugin.pylon.clan.Clan;
+import cjs.DF_Plugin.util.item.ItemBuilder;
+import cjs.DF_Plugin.util.item.ItemFactory;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
@@ -13,7 +14,6 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Arrays;
@@ -39,49 +39,52 @@ public class ResurrectGuiManager {
                 .filter(clan.getMembers()::contains)
                 .collect(Collectors.toList());
 
-        if (deadClanMembers.isEmpty()) {
-            player.sendMessage(PREFIX + "§a부활시킬 팀원이 없습니다.");
-            player.closeInventory();
-            return;
-        }
-
         // TODO: Add pagination for more than 54 members
         Inventory gui = Bukkit.createInventory(null, 54, RESURRECT_GUI_TITLE);
 
-        for (UUID deadMemberUUID : deadClanMembers) {
-            OfflinePlayer deadPlayer = Bukkit.getOfflinePlayer(deadMemberUUID);
-            gui.addItem(createResurrectionHead(deadPlayer));
+        if (deadClanMembers.isEmpty()) {
+            ItemStack noOneToResurrect = new ItemBuilder(Material.BARRIER)
+                    .withName("§c부활시킬 팀원이 없습니다.")
+                    .addLoreLine("§7사망한 가문원이 없습니다.")
+                    .build();
+            gui.setItem(22, noOneToResurrect); // GUI 중앙에 메시지 표시
+        } else {
+            for (UUID deadMemberUUID : deadClanMembers) {
+                OfflinePlayer deadPlayer = Bukkit.getOfflinePlayer(deadMemberUUID);
+                gui.addItem(createResurrectionHead(deadPlayer));
+            }
         }
 
         player.openInventory(gui);
     }
 
     private ItemStack createResurrectionHead(OfflinePlayer deadPlayer) {
-        // 오프라인 플레이어의 스킨을 올바르게 로드하기 위해 ItemFactory를 사용합니다.
-        ItemStack head = ItemFactory.createPlayerHead(deadPlayer.getUniqueId());
-        ItemMeta meta = head.getItemMeta();
-
         long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(deadPlayer.getUniqueId());
-        int banDurationMinutes = plugin.getGameConfigManager().getPylonDeathBanDurationMinutes();
+        int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.duration-minutes", 60);
         long banEndTime = deathTime + TimeUnit.MINUTES.toMillis(banDurationMinutes);
         long remainingMillis = Math.max(0, banEndTime - System.currentTimeMillis());
 
         long remainingMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis);
-        int costPerMinute = plugin.getGameConfigManager().getPylonResurrectionCostPerMinute();
+        int costPerMinute = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.resurrection-cost-per-minute", 1);
         long totalCost = remainingMinutes * costPerMinute;
-
         String remainingTime = PluginUtils.formatTime(remainingMillis);
 
-        meta.setDisplayName("§c" + deadPlayer.getName());
-        meta.setLore(Arrays.asList(
-                "§7클릭하여 이 팀원을 부활시킵니다.",
-                "",
-                "§f남은 시간: §e" + remainingTime,
-                "§f부활 비용: §2에메랄드 " + totalCost + "개"
-        ));
-        meta.getPersistentDataContainer().set(BeaconGUIManager.GUI_BUTTON_KEY, PersistentDataType.STRING, "resurrect_player:" + deadPlayer.getUniqueId());
-        head.setItemMeta(meta);
-        return head;
+        // 데이터 파일에 저장된 머리를 먼저 로드하고, 없으면 새로 생성합니다.
+        ItemStack playerHead = plugin.getPlayerDataManager().getPlayerHead(deadPlayer.getUniqueId());
+        if (playerHead == null || playerHead.getType() == Material.AIR) {
+            playerHead = ItemFactory.createPlayerHead(deadPlayer.getUniqueId());
+        }
+
+        return new ItemBuilder(playerHead)
+                .withName("§c" + deadPlayer.getName())
+                .withLore(
+                        "§7클릭하여 이 팀원을 부활시킵니다.",
+                        "",
+                        "§f남은 시간: §e" + remainingTime,
+                        "§f부활 비용: §a에메랄드 " + totalCost + "개"
+                )
+                .withPDCString(BeaconGUIManager.GUI_BUTTON_KEY, "resurrect_player:" + deadPlayer.getUniqueId())
+                .build();
     }
 
     public void handleGuiClick(InventoryClickEvent event) {
@@ -107,7 +110,7 @@ public class ResurrectGuiManager {
         long totalCost = remainingMinutes * costPerMinute;
 
         if (!player.getInventory().contains(Material.EMERALD, (int) totalCost)) {
-            player.sendMessage(PREFIX + "§c부활에 필요한 에메랄드가 부족합니다. (필요: " + totalCost + "개)");
+            player.sendMessage(PREFIX + "§c부활에 필요한 §a에메랄드§c가 부족합니다. (필요: " + totalCost + "개)");
             player.closeInventory();
             return;
         }
@@ -119,7 +122,6 @@ public class ResurrectGuiManager {
         player.sendMessage(PREFIX + "§a" + targetPlayer.getName() + "님을 성공적으로 부활시켰습니다!");
 
         // Refresh or close GUI
-        player.closeInventory();
-        openResurrectionGui(player); // Re-open to show updated list
+        player.closeInventory(); // 부활 후 GUI를 닫습니다.
     }
 }

@@ -14,6 +14,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,7 +27,7 @@ public class SwordProfile implements IUpgradeableProfile {
     private static final UUID BASE_ATTACK_SPEED_MODIFIER_UUID = UUID.fromString("FA233E1C-4180-4865-B01B-BCCE9785ACA2");
 
     @Override
-    public void applyAttributes(ItemStack item, ItemMeta meta, int level, List<String> lore) {
+    public void applyAttributes(ItemStack item, ItemMeta meta, int level) {
         // 1. 기존 공격 관련 속성을 모두 제거합니다.
         meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE);
         meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_SPEED);
@@ -51,27 +53,39 @@ public class SwordProfile implements IUpgradeableProfile {
         // --- 로어 표시 수정 ---
         // 4. 기본 속성 표시(녹색 줄)를 숨깁니다.
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+    }
 
-        // 5. 패시브 능력 로어 업데이트 (공격 속도 보너스)
-        lore.removeIf(line -> line.contains("추가 공격속도:"));
-        if (level > 0) {
-            lore.add("");
-            lore.add("§b추가 공격속도: +" + String.format("%.1f", totalBonus));
+    @Override
+    public List<String> getPassiveBonusLore(ItemStack item, int level) {
+        if (level <= 0) {
+            return Collections.emptyList();
         }
+        double speedBonusPerLevel = DF_Main.getInstance().getGameConfigManager().getConfig()
+                .getDouble("upgrade.generic-bonuses.sword.attack-speed-per-level", 0.3);
+        double totalBonus = speedBonusPerLevel * level;
+        return List.of("§b추가 공격속도: +" + String.format("%.1f", totalBonus));
+    }
 
-        // 6. 바닐라 스타일로 속성 정보를 로어에 직접 추가합니다.
-        // 기존에 있을 수 있는 수동 로어를 먼저 제거합니다.
-        lore.removeIf(line -> line.contains("공격 피해") || line.contains("공격 속도") || line.contains("주로 사용하는 손에 있을 때:"));
-
-        lore.add("§7주로 사용하는 손에 있을 때:");
+    @Override
+    public List<String> getBaseStatsLore(ItemStack item, int level) {
+        List<String> baseLore = new ArrayList<>();
+        baseLore.add("§7주로 사용하는 손에 있을 때:");
 
         // 최종 공격 피해 계산 및 추가
+        double damageModifierValue = getBaseDamageModifier(item.getType());
         double finalDamage = 1.0 + damageModifierValue;
-        lore.add("§2 " + String.format("%.1f", finalDamage) + " 공격 피해");
+        baseLore.add("§2 " + String.format("%.1f", finalDamage) + " 공격 피해");
 
         // 최종 공격 속도 계산 및 추가
+        final double baseAttackSpeedAttribute = -2.4;
+        double speedBonusPerLevel = DF_Main.getInstance().getGameConfigManager().getConfig()
+                .getDouble("upgrade.generic-bonuses.sword.attack-speed-per-level", 0.3);
+        double totalBonus = speedBonusPerLevel * level;
+        double finalAttackSpeedModifierValue = baseAttackSpeedAttribute + totalBonus;
         double finalSpeed = 4.0 + finalAttackSpeedModifierValue; // 4.0 + (-2.4 + bonus) = 1.6 + bonus
-        lore.add("§2 " + String.format("%.1f", finalSpeed) + " 공격 속도");
+        baseLore.add("§2 " + String.format("%.1f", finalSpeed) + " 공격 속도");
+
+        return baseLore;
     }
 
     private double getBaseDamageModifier(Material material) {

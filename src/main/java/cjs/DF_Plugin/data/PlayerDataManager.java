@@ -2,6 +2,7 @@ package cjs.DF_Plugin.data;
 
 import cjs.DF_Plugin.DF_Main;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.entity.Player;
 
 import java.util.UUID;
@@ -28,6 +29,14 @@ public class PlayerDataManager extends DataManager {
         getPlayerSection(player.getUniqueId()).set("name", player.getName());
     }
 
+    public void setPlayerHead(UUID uuid, ItemStack head) {
+        getPlayerSection(uuid).set("head", head);
+    }
+
+    public ItemStack getPlayerHead(UUID uuid) {
+        return getPlayerSection(uuid).getItemStack("head");
+    }
+
     public boolean hasInitialTeleportDone(UUID uuid) {
         return getPlayerSection(uuid).getBoolean("initial-teleport-done", false);
     }
@@ -43,5 +52,12 @@ public class PlayerDataManager extends DataManager {
                 playersSection.set(uuidStr + ".initial-teleport-done", null);
             }
         }
+    }
+
+    /**
+     * 플레이어의 초기 텔레포트가 완료되었음을 기록합니다. (setInitialTeleportDone(uuid, true)의 별칭)
+     */
+    public void setInitialTeleportCompleted(UUID uuid) {
+        setInitialTeleportDone(uuid, true);
     }
 }

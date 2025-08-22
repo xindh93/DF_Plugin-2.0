@@ -476,7 +476,7 @@ public class BackflowAbility implements ISpecialAbility {
         waterBlocks.clear();
 
         new BukkitRunnable() {
-            final int DESTRUCTION_DURATION_TICKS = originalBlockChunks.size(); // 각 청크가 1회 실행을 의미
+            final int DESTRUCTION_DURATION_TICKS = originalBlockChunks.size() + 5; // 각 청크가 1회 실행을 의미하며, 5회(0.5초)의 추가 시간을 부여합니다.
             int chunkIndex = 0; // We will restore one chunk at a time
             int tickCounter = 0;
             boolean destructionFinished = false;

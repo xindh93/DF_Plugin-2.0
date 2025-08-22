@@ -40,7 +40,7 @@ public abstract class DataManager {
         try {
             getConfig().save(this.dataFile);
         } catch (IOException e) {
-            plugin.getLogger().severe("Could not save config to " + this.dataFile);
+            plugin.getLogger().severe("[데이터 관리] " + this.dataFile + " 파일에 저장할 수 없습니다.");
             e.printStackTrace();
         }
     }
@@ -50,12 +50,9 @@ public abstract class DataManager {
             this.dataFile = new File(this.plugin.getDataFolder(), this.fileName);
         }
         if (!this.dataFile.exists()) {
-            try {
-                this.dataFile.getParentFile().mkdirs();
-                this.dataFile.createNewFile();
-            } catch (IOException e) {
-                plugin.getLogger().severe("Could not create data file: " + this.fileName);
-            }
+            // 리소스 폴더에서 기본 설정 파일을 복사합니다.
+            // 파일이 없으면 아무 작업도 하지 않습니다. (오류 메시지는 saveResource 내부에서 처리)
+            plugin.saveResource(this.fileName, false);
         }
     }
 
@@ -72,7 +69,7 @@ public abstract class DataManager {
         }
         if (this.dataFile.exists()) {
             if (!this.dataFile.delete()) {
-                plugin.getLogger().warning("Could not delete data file: " + this.fileName);
+                plugin.getLogger().warning("[데이터 관리] 데이터 파일(" + this.fileName + ")을 삭제할 수 없습니다.");
             }
         }
         // 메모리에 로드된 설정도 초기화합니다.

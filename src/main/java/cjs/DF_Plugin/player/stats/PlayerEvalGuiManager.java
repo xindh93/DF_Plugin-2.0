@@ -1,7 +1,8 @@
 package cjs.DF_Plugin.player.stats;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.items.ItemBuilder;
+import cjs.DF_Plugin.util.item.ItemBuilder;
+import cjs.DF_Plugin.util.item.ItemFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -20,7 +21,7 @@ public class PlayerEvalGuiManager {
 
     public void openEvalGui(Player admin, OfflinePlayer target) {
         if (target == null) {
-            admin.sendMessage("§c플레이어를 찾을 수 없습니다.");
+            admin.sendMessage("§c[스탯] §c플레이어를 찾을 수 없습니다.");
             return;
         }
 
@@ -40,16 +41,19 @@ public class PlayerEvalGuiManager {
                     .build();
         }
 
-        return new ItemBuilder(Material.PLAYER_HEAD)
-                .withSkullOwner(player)
+        // 데이터 파일에 저장된 머리를 먼저 로드하고, 없으면 새로 생성합니다.
+        ItemStack playerHead = plugin.getPlayerDataManager().getPlayerHead(player.getUniqueId());
+        if (playerHead == null || playerHead.getType() == Material.AIR) {
+            playerHead = ItemFactory.createPlayerHead(player.getUniqueId());
+        }
+
+        return new ItemBuilder(playerHead)
                 .withName("§a" + player.getName())
                 .addLoreLine(" ")
                 .addLoreLine("§7" + StatType.ATTACK.getDisplayName() + ": " + getStars(stats.getStat(StatType.ATTACK)))
                 .addLoreLine("§7" + StatType.INTELLIGENCE.getDisplayName() + ": " + getStars(stats.getStat(StatType.INTELLIGENCE)))
                 .addLoreLine("§7" + StatType.STAMINA.getDisplayName() + ": " + getStars(stats.getStat(StatType.STAMINA)))
                 .addLoreLine("§7" + StatType.ENTERTAINMENT.getDisplayName() + ": " + getStars(stats.getStat(StatType.ENTERTAINMENT)))
-                .addLoreLine(" ")
-                .addLoreLine("§e전투력: " + String.format("%.2f", stats.getCombatPower()))
                 .build();
     }
 

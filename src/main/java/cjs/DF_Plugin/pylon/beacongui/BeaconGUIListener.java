@@ -1,9 +1,7 @@
 package cjs.DF_Plugin.pylon.beacongui;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.items.ItemBuilder;
-import cjs.DF_Plugin.pylon.beacongui.giftbox.GiftBoxGuiManager;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.pylon.beacongui.recruit.RecruitGuiManager;
 import cjs.DF_Plugin.pylon.beacongui.resurrect.ResurrectGuiManager;
 import cjs.DF_Plugin.pylon.beacongui.shop.PylonShopManager;
@@ -15,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -70,10 +69,40 @@ public class BeaconGUIListener implements Listener {
     }
 
     @EventHandler
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        String title = event.getView().getTitle();
+        if (title.endsWith("§f의 선물상자")) {
+            Player player = (Player) event.getPlayer();
+            Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+            if (clan != null) {
+                plugin.getClanManager().setGiftBoxViewer(clan, player.getUniqueId());
+            }
+        }
+    }
+
+    @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
+        Player player = (Player) event.getPlayer();
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        if (clan == null) return;
+
+        String title = event.getView().getTitle();
+        String expectedMainTitle = BeaconGUIManager.getMainMenuTitle(clan);
+
         // 메인 GUI가 닫혔을 때 업데이트 작업을 중지합니다.
-        if (event.getView().getTitle().equals(BeaconGUIManager.MAIN_GUI_TITLE)) {
-            stopGuiUpdateTask((Player) event.getPlayer());
+        if (title.equals(expectedMainTitle)) {
+            stopGuiUpdateTask(player);
+            return; // 메인 메뉴 자체를 닫을 때는 다시 열지 않음
+        }
+
+        // 서브 GUI 식별
+        final boolean isGiftBoxGUI = title.endsWith("§f의 선물상자");
+
+        if (isGiftBoxGUI) {
+            // 선물상자 닫기 처리 로직 (from GiftBoxGuiManager)
+            plugin.getClanManager().setGiftBoxViewer(clan, null);
+            plugin.getInventoryDataManager().saveInventory(event.getInventory(), "gift_box", clan.getName());
+            plugin.getInventoryDataManager().saveConfig();
         }
     }
 
@@ -87,8 +116,11 @@ public class BeaconGUIListener implements Listener {
     public void onGuiClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        String expectedMainTitle = (clan != null) ? BeaconGUIManager.getMainMenuTitle(clan) : "";
+
         final String title = event.getView().getTitle();
-        final boolean isMainGUI = title.equals(BeaconGUIManager.MAIN_GUI_TITLE);
+        final boolean isMainGUI = title.equals(expectedMainTitle);
         final boolean isRecruitGUI = title.equals(RecruitGuiManager.RECRUIT_GUI_TITLE_SELECT) || title.equals(RecruitGuiManager.RECRUIT_GUI_TITLE_ROULETTE);
         final boolean isResurrectGUI = title.equals(ResurrectGuiManager.RESURRECT_GUI_TITLE);
         final boolean isShopGUI = title.equals(PylonShopManager.SHOP_GUI_TITLE);
@@ -143,10 +175,14 @@ public class BeaconGUIListener implements Listener {
     private void startGuiUpdateTask(Player player) {
         stopGuiUpdateTask(player); // 기존 작업이 있다면 중지
 
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        if (clan == null) return;
+        String expectedTitle = BeaconGUIManager.getMainMenuTitle(clan);
+
         BukkitTask task = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!player.isOnline() || !player.getOpenInventory().getTitle().equals(BeaconGUIManager.MAIN_GUI_TITLE)) {
+                if (!player.isOnline() || !player.getOpenInventory().getTitle().equals(expectedTitle)) {
                     this.cancel();
                     guiUpdateTasks.remove(player.getUniqueId());
                     return;

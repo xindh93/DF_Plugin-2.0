@@ -3,25 +3,18 @@ package cjs.DF_Plugin.upgrade.specialability;
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.data.PlayerDataManager;
 import cjs.DF_Plugin.upgrade.specialability.impl.TotemAbility;
-import cjs.DF_Plugin.settings.GameConfigManager;
 import org.bukkit.event.Listener;
 import org.bukkit.Bukkit;
-import cjs.DF_Plugin.upgrade.profile.IUpgradeableProfile;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
 
 public class SpecialAbilityManager {
 
@@ -87,6 +80,10 @@ public class SpecialAbilityManager {
                 config.set(path + ".visible", info.visible());
             });
         });
+
+        int cooldownCount = (int) playerCooldowns.values().stream().mapToLong(Map::size).sum();
+        int chargeCount = (int) playerCharges.values().stream().mapToLong(Map::size).sum();
+        plugin.getLogger().info("[능력 관리] " + cooldownCount + "개의 쿨다운 정보와 " + chargeCount + "개의 충전 정보를 저장했습니다.");
         // PlayerDataManager가 파일 저장을 담당하므로 여기서는 호출하지 않음
         // DF_Main의 onDisable에서 한 번에 저장됩니다.
     }

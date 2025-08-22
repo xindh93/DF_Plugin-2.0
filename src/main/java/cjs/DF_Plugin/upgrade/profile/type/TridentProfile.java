@@ -13,6 +13,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,14 +23,8 @@ public class TridentProfile implements IUpgradeableProfile {
     private static final ISpecialAbility BACKFLOW_ABILITY = new BackflowAbility();
 
     @Override
-    public void applyAttributes(ItemStack item, ItemMeta meta, int level, List<String> lore) {
-        // 1. 강화 레벨에 따른 추가 투사체 로어
-        if (level > 0) {
-            lore.add(""); // 간격
-            lore.add("§b추가 투사체: +" + level + "개");
-        }
-
-        // 2. 모드에 따른 능력, 이름, 인챈트 설정
+    public void applyAttributes(ItemStack item, ItemMeta meta, int level) {
+        // 모드에 따른 능력, 이름, 인챈트 설정
         SpecialAbilityManager abilityManager = DF_Main.getInstance().getSpecialAbilityManager();
         String mode = meta.getPersistentDataContainer().getOrDefault(UpgradeManager.TRIDENT_MODE_KEY, PersistentDataType.STRING, "backflow");
         ISpecialAbility currentAbility = abilityManager.getRegisteredAbility(mode);
@@ -46,25 +41,6 @@ public class TridentProfile implements IUpgradeableProfile {
             } else if (mode.equals("lightning_spear")) {
                 meta.addEnchant(Enchantment.LOYALTY, 3, true);
                 meta.addEnchant(Enchantment.CHANNELING, 1, true);
-            }
-
-            // 10강 이상일 때만 특수 능력 설정 및 로어 추가
-            if (level >= UpgradeManager.MAX_UPGRADE_LEVEL) {
-                // 능력 키 설정
-                meta.getPersistentDataContainer().set(UpgradeManager.SPECIAL_ABILITY_KEY, PersistentDataType.STRING, currentAbility.getInternalName());
-
-                if (!meta.getPersistentDataContainer().has(UpgradeManager.ITEM_UUID_KEY, PersistentDataType.STRING)) {
-                    meta.getPersistentDataContainer().set(UpgradeManager.ITEM_UUID_KEY, PersistentDataType.STRING, UUID.randomUUID().toString());
-                }
-
-                // 특수 능력 로어 추가
-                lore.add(""); // 간격
-                // 삼지창의 [특수능력] 로어는 보라색으로 고정합니다.
-                lore.add("§5[특수능력]§f : " + currentAbility.getDisplayName());
-                lore.add(currentAbility.getDescription());
-            } else {
-                // 10강 미만일 때 특수 능력이 없도록 PDC를 제거합니다.
-                meta.getPersistentDataContainer().remove(UpgradeManager.SPECIAL_ABILITY_KEY);
             }
             // 이름에 모드 접미사 추가
             if (meta.hasDisplayName()) {
@@ -84,6 +60,14 @@ public class TridentProfile implements IUpgradeableProfile {
                 meta.setDisplayName(currentName + " " + colorCode + "[" + abilityName + "]");
             }
         }
+    }
+
+    @Override
+    public List<String> getPassiveBonusLore(ItemStack item, int level) {
+        if (level > 0) {
+            return List.of("§b추가 투사체: +" + level + "개");
+        }
+        return Collections.emptyList();
     }
 
     @Override

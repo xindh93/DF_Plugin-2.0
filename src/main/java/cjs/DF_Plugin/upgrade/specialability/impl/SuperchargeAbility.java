@@ -2,14 +2,13 @@ package cjs.DF_Plugin.upgrade.specialability.impl;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.player.offline.OfflinePlayerManager;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
 import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityManager;
 import org.bukkit.Particle;
 import org.bukkit.EntityEffect;
 import org.bukkit.Sound;
-import org.bukkit.entity.Arrow;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -230,14 +229,18 @@ public class SuperchargeAbility implements ISpecialAbility {
                     if (entity.getPersistentDataContainer().has(OfflinePlayerManager.OFFLINE_BODY_KEY, PersistentDataType.STRING)) {
                         continue;
                     }
-                    // 방어력을 무시하는 고정 피해
-                    entity.setHealth(Math.max(0.0, entity.getHealth() - damage));
-                    entity.playEffect(EntityEffect.HURT); // 피격 시각 효과를 재생합니다.
+                    // 1. 소량의 일반 피해를 주어 피격 효과(소리, 붉은색 점멸)를 유발합니다.
+                    entity.damage(1.0, player);
 
-                    // 피격된 엔티티를 밀어냅니다.
+                    // 2. 주된 피해는 방어력을 무시하는 고정 피해로 적용합니다.
+                    //    일반 피해로 1.0이 이미 들어갔으므로, 전체 피해량에서 1.0을 뺍니다.
+                    double fixedDamage = Math.max(0, damage);
+                    entity.setHealth(Math.max(0.0, entity.getHealth() - fixedDamage));
+
+                    // 3. damage()에 의한 기본 넉백을 덮어쓰고, 커스텀 넉백을 적용합니다.
                     Vector knockbackDirection = entity.getLocation().toVector().subtract(player.getLocation().toVector()).normalize();
                     knockbackDirection.setY(Math.max(knockbackDirection.getY(), 0.4)); // 살짝 위로 띄웁니다.
-                    entity.setVelocity(entity.getVelocity().add(knockbackDirection.multiply(targetKnockback)));
+                    entity.setVelocity(knockbackDirection.multiply(targetKnockback));
                     hitEntities.add(entity.getUniqueId());
                 }
                 distance += step;

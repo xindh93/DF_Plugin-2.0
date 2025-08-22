@@ -1,9 +1,8 @@
 package cjs.DF_Plugin.command.admin;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.command.admin.editor.SettingsEditor;
-import cjs.DF_Plugin.items.RecipeManager;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.world.item.RecipeManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.world.WorldManager;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -28,17 +27,17 @@ public class SetSettingsCommand {
 
     public void handle(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("이 명령어는 플레이어만 사용할 수 있습니다.");
+            sender.sendMessage("§c[DF 관리] 이 명령어는 플레이어만 사용할 수 있습니다.");
             return;
         }
 
         if (!player.hasPermission("df.admin.settings")) {
-            player.sendMessage("§c이 명령어를 사용할 권한이 없습니다.");
+            player.sendMessage("§c[DF 관리] 이 명령어를 사용할 권한이 없습니다.");
             return;
         }
 
         if (args.length < 2) {
-            player.sendMessage("§c사용법: /df admin set <설정키> <값>");
+            player.sendMessage("§c[DF 관리] 사용법: /df admin set <설정키> <값>");
             return;
         }
 
@@ -47,7 +46,7 @@ public class SetSettingsCommand {
         Object currentValue = configManager.getConfig().get(key);
 
         if (currentValue == null) {
-            player.sendMessage("§c'" + key + "'는 존재하지 않는 설정입니다.");
+            player.sendMessage("§c[DF 관리] '" + key + "'는 존재하지 않는 설정입니다.");
             return;
         }
 
@@ -71,7 +70,7 @@ public class SetSettingsCommand {
             }
 
             configManager.save();
-            player.sendMessage("§a설정 '" + key + "'을(를) '" + valueStr + "'(으)로 변경했습니다.");
+            player.sendMessage("§a[DF 관리] 설정 '" + key + "'을(를) '" + valueStr + "'(으)로 변경했습니다.");
 
             // 특정 설정은 즉시 적용 로직 호출
             if (key.startsWith("world.border") || key.startsWith("world.rules")) {
@@ -84,7 +83,7 @@ public class SetSettingsCommand {
             refreshSettingsUI(player, key);
 
         } catch (NumberFormatException e) {
-            player.sendMessage("§c잘못된 숫자 형식입니다.");
+            player.sendMessage("§c[DF 관리] 잘못된 숫자 형식입니다.");
         }
     }
 

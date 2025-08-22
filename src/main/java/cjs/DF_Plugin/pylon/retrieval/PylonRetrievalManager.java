@@ -1,9 +1,9 @@
 package cjs.DF_Plugin.pylon.retrieval;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.pylon.PylonType;
-import cjs.DF_Plugin.pylon.item.PylonItemFactory;
+import cjs.DF_Plugin.util.item.PylonItemFactory;
 import cjs.DF_Plugin.util.InventoryUtils;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Location;

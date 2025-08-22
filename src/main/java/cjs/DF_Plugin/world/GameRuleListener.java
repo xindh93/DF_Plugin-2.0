@@ -1,7 +1,7 @@
 package cjs.DF_Plugin.world;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityManager;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -64,10 +64,10 @@ public class GameRuleListener implements Listener {
     @EventHandler
     public void onInventoryOpen(InventoryOpenEvent event) {
         if (event.getInventory().getType() == InventoryType.ENDER_CHEST) {
-            if (configManager.isWorldRuleEnderChestDisabled()) {
+            if (configManager.getConfig().getBoolean("world.rules.enderchest-disabled", true)) {
                 event.setCancelled(true);
                 if (event.getPlayer() instanceof Player player) {
-                    player.sendMessage("§c엔더 상자는 현재 비활성화되어 있습니다.");
+                    player.sendMessage("§c[알림] §c엔더 상자는 현재 비활성화되어 있습니다.");
                 }
             }
         }
@@ -94,11 +94,7 @@ public class GameRuleListener implements Listener {
 
         if (remainingMillis > 0) {
             event.setCancelled(true);
-            long remainingSeconds = (remainingMillis / 1000) + 1;
-            player.sendMessage("§c불사의 토템을 아직 사용할 수 없습니다. (" + remainingSeconds + "초 남음)");
-            player.playSound(player.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1.0f, 1.0f);
         } else {
-            // 쿨다운이 없으면 사용을 허용하고 쿨다운을 설정합니다.
             specialAbilityManager.setCooldown(player, COOLDOWN_KEY, cooldownSeconds, "§6불사의 토템");
         }
     }
@@ -148,13 +144,13 @@ public class GameRuleListener implements Listener {
             // 1. 포션 소지 개수 제한 확인
             int limit = configManager.getConfig().getInt("world.rules.potion-limit", 4);
             if (countPotions(player.getInventory()) > limit) {
-                player.sendMessage("§c포션은 " + limit + "개까지만 소지할 수 있습니다. 초과분은 인벤토리에서 제외됩니다.");
+                player.sendMessage("§c[알림] §c포션은 " + limit + "개까지만 소지할 수 있습니다. 초과분은 인벤토리에서 제외됩니다.");
                 removeExcessPotions(player, limit);
             }
 
             // 2. 금지된 포션 확인
             if (removeBannedPotions(player)) {
-                player.sendMessage("§c금지된 포션은 소지할 수 없습니다. 해당 포션이 인벤토리에서 제거됩니다.");
+                player.sendMessage("§c[알림] §c금지된 포션은 소지할 수 없습니다. 해당 포션이 인벤토리에서 제거됩니다.");
             }
         });
     }

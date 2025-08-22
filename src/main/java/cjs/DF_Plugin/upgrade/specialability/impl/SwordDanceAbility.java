@@ -21,7 +21,7 @@ public class SwordDanceAbility implements ISpecialAbility {
 
     @Override
     public String getDescription() {
-        return "§7모든 공격이 상대의 무적 시간을 무시합니다.";
+        return "§7공격이 상대의 무적 시간을 무시합니다.";
     }
 
     @Override

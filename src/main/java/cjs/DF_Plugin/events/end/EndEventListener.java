@@ -37,7 +37,7 @@ public class EndEventListener implements Listener {
         if (fromWorld.getEnvironment() != World.Environment.THE_END) {
             if (!endEventManager.isEndOpen()) {
                 event.setCancelled(true);
-                player.sendMessage("§c엔드 포탈은 아직 굳게 닫혀 있습니다.");
+                player.sendMessage("§c[엔드 이벤트] §c엔드 포탈은 아직 굳게 닫혀 있습니다.");
                 return;
             }
 
@@ -47,8 +47,8 @@ public class EndEventListener implements Listener {
 
             // 엔드 월드는 openEnd()에서 미리 생성되어 있어야 합니다.
             if (endWorld == null) {
-                player.sendMessage("§c엔드 월드에 접근할 수 없습니다. 서버 관리자에게 문의하세요.");
-                DF_Main.getInstance().getLogger().severe("Player " + player.getName() + " tried to enter The End, but the world is not loaded!");
+                player.sendMessage("§c[엔드 이벤트] §c엔드 월드에 접근할 수 없습니다. 서버 관리자에게 문의하세요.");
+                DF_Main.getInstance().getLogger().severe("[엔드 이벤트] Player " + player.getName() + " tried to enter The End, but the world is not loaded!");
                 return;
             }
 

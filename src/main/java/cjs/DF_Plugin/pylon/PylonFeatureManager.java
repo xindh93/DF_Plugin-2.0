@@ -1,8 +1,8 @@
 package cjs.DF_Plugin.pylon;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.pylon.item.PylonItemFactory;
+import cjs.DF_Plugin.pylon.clan.Clan;
+import cjs.DF_Plugin.util.item.PylonItemFactory;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;

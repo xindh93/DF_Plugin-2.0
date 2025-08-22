@@ -1,8 +1,8 @@
 package cjs.DF_Plugin.command.clan;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.clan.ClanManager;
+import cjs.DF_Plugin.pylon.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.ClanManager;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -25,11 +25,11 @@ public class ClanCommand {
         if (args.length == 0) {
             Clan clan = clanManager.getClanByPlayer(player.getUniqueId());
             if (clan == null) {
-                player.sendMessage("§c소속된 가문이 없습니다. 가문을 생성하려면 /df clan create 를 입력하세요.");
+                player.sendMessage("§c[가문] §c소속된 가문이 없습니다. 가문을 생성하려면 /df clan create 를 입력하세요.");
             } else {
                 // TODO: 가문 정보 UI를 열거나 정보를 표시하는 로직 추가
-                player.sendMessage("§a당신은 " + clan.getDisplayName() + "§a 가문에 소속되어 있습니다.");
-                player.sendMessage("§7사용 가능한 명령어: /df clan <create|delete>");
+                player.sendMessage("§a[가문] §a당신은 " + clan.getDisplayName() + "§a 가문에 소속되어 있습니다.");
+                player.sendMessage("§7[가문] §7사용 가능한 명령어: /df clan <create|delete>");
             }
             return true;
         }
@@ -44,7 +44,7 @@ public class ClanCommand {
                 return deleteClanCommand.handle(player, subArgs);
             // 향후 'invite', 'leave', 'kick' 등의 명령어가 여기에 추가될 수 있습니다.
             default:
-                player.sendMessage("§c알 수 없는 가문 명령어입니다. 사용 가능한 명령어: create, delete");
+                player.sendMessage("§c[가문] §c알 수 없는 가문 명령어입니다. 사용 가능한 명령어: create, delete");
                 return true;
         }
     }

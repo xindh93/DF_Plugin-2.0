@@ -1,8 +1,10 @@
 package cjs.DF_Plugin.player.offline;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.clan.ClanManager;
+import cjs.DF_Plugin.pylon.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.ClanManager;
+import cjs.DF_Plugin.util.item.ItemBuilder;
+import cjs.DF_Plugin.util.item.ItemFactory;
 import cjs.DF_Plugin.data.InventoryDataManager;
 import cjs.DF_Plugin.player.death.PlayerDeathManager;
 import org.bukkit.*;
@@ -24,9 +26,7 @@ import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -52,7 +52,7 @@ public class OfflinePlayerManager implements Listener {
      * 주인이 이미 온라인인 아바타(비정상 종료로 남은 경우)는 제거합니다.
      */
     public void loadAndVerifyOfflineStands() {
-        plugin.getLogger().info("오프라인 플레이어 아바타를 불러오는 중...");
+        plugin.getLogger().info("[오프라인 관리] 오프라인 플레이어 아바타를 불러오는 중...");
         int verifiedCount = 0;
         int removedCount = 0;
 
@@ -75,13 +75,13 @@ public class OfflinePlayerManager implements Listener {
                             verifiedCount++;
                         }
                     } catch (IllegalArgumentException e) {
-                        plugin.getLogger().warning("오프라인 아바타에서 잘못된 UUID 태그를 발견하여 제거합니다: " + uuidString);
+                        plugin.getLogger().warning("[오프라인 관리] 오프라인 아바타에서 잘못된 UUID 태그를 발견하여 제거합니다: " + uuidString);
                         stand.remove();
                     }
                 }
             }
         }
-        plugin.getLogger().info(verifiedCount + "개의 오프라인 플레이어 아바타를 확인했으며, " + removedCount + "개의 오래된 아바타를 제거했습니다.");
+        plugin.getLogger().info("[오프라인 관리] " + verifiedCount + "개의 오프라인 플레이어 아바타를 확인했으며, " + removedCount + "개의 오래된 아바타를 제거했습니다.");
     }
 
     @EventHandler
@@ -93,8 +93,12 @@ public class OfflinePlayerManager implements Listener {
             return; // 사망 밴 상태의 플레이어는 아바타를 남기지 않습니다.
         }
 
-        saveInventory(player);
-        spawnBody(player);
+        // 플레이어의 머리 아이템을 생성하고 playerdata.yml에 저장합니다.
+        ItemStack playerHead = getPlayerHead(player);
+        plugin.getPlayerDataManager().setPlayerHead(player.getUniqueId(), playerHead);
+
+        saveInventory(player, playerHead);
+        spawnBody(player, playerHead);
     }
 
     @EventHandler
@@ -107,7 +111,7 @@ public class OfflinePlayerManager implements Listener {
             Player viewer = viewingPlayers.get(playerUUID);
             if (viewer != null && viewer.isOnline()) {
                 viewer.closeInventory(); // onInventoryClose가 호출되어 인벤토리가 저장됩니다.
-                viewer.sendMessage("§e" + player.getName() + "님이 접속하여 인벤토리가 닫혔습니다.");
+                viewer.sendMessage("§e[인벤토리] §e" + player.getName() + "님이 접속하여 인벤토리가 닫혔습니다.");
             }
         }
 
@@ -196,27 +200,27 @@ public class OfflinePlayerManager implements Listener {
                 if (!isPlacementAllowed(slot, cursorItem)) {
                     event.setCancelled(true);
                     if (event.getWhoClicked() instanceof Player p) {
-                        p.sendMessage("§c이 슬롯에는 해당 종류의 아이템만 놓을 수 있습니다.");
+                        p.sendMessage("§c[인벤토리] §c이 슬롯에는 해당 종류의 아이템만 놓을 수 있습니다.");
                     }
                 }
             }
         }
     }
 
-    private void spawnBody(Player player) {
+    private void spawnBody(Player player, ItemStack playerHead) {
         Location spawnLocation = player.getLocation().getBlock().getLocation().add(0.5, 0.0, 0.5);
         spawnLocation.setYaw(player.getLocation().getYaw());
 
         ArmorStand as = spawnLocation.getWorld().spawn(spawnLocation, ArmorStand.class);
 
         as.setInvulnerable(true);
-        as.setPersistent(true); // 아바타가 청크 언로드 등으로 인해 사라지지 않도록 설정합니다.
+        as.setPersistent(true);
         as.setGravity(false);
         as.setSmall(true);
         as.setBasePlate(false);
         as.setVisible(false);
 
-        as.getEquipment().setHelmet(getPlayerHead(player));
+        as.getEquipment().setHelmet(playerHead);
 
         as.getPersistentDataContainer().set(OFFLINE_BODY_KEY, PersistentDataType.STRING, player.getUniqueId().toString());
         ClanManager clanManager = plugin.getClanManager();
@@ -302,12 +306,12 @@ public class OfflinePlayerManager implements Listener {
         }
     }
 
-    private void saveInventory(Player player) {
+    private void saveInventory(Player player, ItemStack playerHead) {
         OfflineInventory offlineInventory = new OfflineInventory(
                 player.getInventory().getStorageContents(),
                 player.getInventory().getArmorContents(),
                 player.getInventory().getItemInOffHand(),
-                getPlayerHead(player)
+                playerHead
         );
         saveOfflineInventory(player.getUniqueId(), offlineInventory);
     }
@@ -336,12 +340,12 @@ public class OfflinePlayerManager implements Listener {
         OfflineInventory offlineInventory = loadOfflineInventory(offlinePlayerUUID);
 
         if (viewingPlayers.containsKey(offlinePlayerUUID)) {
-            viewer.sendMessage("§c다른 플레이어가 이미 해당 플레이어의 인벤토리를 보고 있습니다.");
+            viewer.sendMessage("§c[인벤토리] §c다른 플레이어가 이미 해당 플레이어의 인벤토리를 보고 있습니다.");
             return;
         }
 
         if (offlineInventory == null) {
-            viewer.sendMessage("§c오프라인 플레이어 정보를 찾을 수 없습니다.");
+            viewer.sendMessage("§c[인벤토리] §c오프라인 플레이어 정보를 찾을 수 없습니다.");
             return;
         }
 
@@ -352,13 +356,9 @@ public class OfflinePlayerManager implements Listener {
     }
 
     private ItemStack getPlayerHead(Player player) {
-        ItemStack playerHead = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta skullMeta = (SkullMeta) playerHead.getItemMeta();
-        if (skullMeta != null) {
-            skullMeta.setOwningPlayer(player);
-            skullMeta.setDisplayName("§f" + player.getName() + "의 정보");
-            playerHead.setItemMeta(skullMeta);
-        }
-        return playerHead;
+        // ItemFactory와 ItemBuilder를 사용하여 일관성 있게 플레이어 머리를 생성합니다.
+        return new ItemBuilder(ItemFactory.createPlayerHead(player.getUniqueId()))
+                .withName("§f" + player.getName() + "의 정보")
+                .build();
     }
 }

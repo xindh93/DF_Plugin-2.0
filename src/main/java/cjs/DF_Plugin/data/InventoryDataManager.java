@@ -41,7 +41,7 @@ public class InventoryDataManager extends DataManager {
                 ItemStack[] items = fromBase64(data);
                 inventory.setContents(items);
             } catch (IOException e) {
-                plugin.getLogger().severe("Could not load inventory for " + type + "/" + key);
+                plugin.getLogger().severe("[인벤토리] " + type + "/" + key + " 인벤토리를 불러올 수 없습니다.");
                 e.printStackTrace();
             }
         }
@@ -56,7 +56,7 @@ public class InventoryDataManager extends DataManager {
             }
             return Base64Coder.encodeLines(outputStream.toByteArray());
         } catch (Exception e) {
-            throw new IllegalStateException("Unable to save item stacks.", e);
+            throw new IllegalStateException("아이템 스택을 저장할 수 없습니다.", e);
         }
     }
 
@@ -69,7 +69,7 @@ public class InventoryDataManager extends DataManager {
             }
             return items;
         } catch (ClassNotFoundException e) {
-            throw new IOException("Unable to decode class type.", e);
+            throw new IOException("클래스 타입을 디코딩할 수 없습니다.", e);
         }
     }
 }

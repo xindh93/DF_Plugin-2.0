@@ -1,9 +1,9 @@
 package cjs.DF_Plugin.pylon.beaconinteraction;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.pylon.PylonType;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Particle;
 import org.bukkit.Material;
@@ -11,6 +11,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -53,7 +54,7 @@ public class PylonAreaManager {
             startParticleTask();
         }
 
-        plugin.getLogger().info("Pylon protection enabled for clan " + clan.getName() + " at " + locString);
+        plugin.getLogger().info("[파일런 영역] Pylon protection enabled for clan " + clan.getName() + " at " + locString);
     }
 
     public void removeProtectedPylon(Location location) {
@@ -63,7 +64,7 @@ public class PylonAreaManager {
             particleTask.cancel();
         }
         intruderTracker.remove(locString);
-        plugin.getLogger().info("Pylon protection removed at " + locString);
+        plugin.getLogger().info("[파일런 영역] Pylon protection removed at " + locString);
     }
 
     /**
@@ -168,6 +169,11 @@ public class PylonAreaManager {
                 // Y축을 무시한 2D 거리 계산
                 if (distanceSquared2D(player.getLocation(), pylonLoc) > radiusSquared) continue;
 
+                // 서바이벌 또는 어드벤처 모드가 아닌 플레이어는 효과를 적용하지 않습니다.
+                if (player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE) {
+                    continue;
+                }
+
                 if (clan.getMembers().contains(player.getUniqueId())) {
                     // 아군일 경우: 버프 적용
                     if (allyBuffEnabled) {
@@ -252,7 +258,7 @@ public class PylonAreaManager {
             return Optional.empty();
         }
 
-        int radius = configManager.getPylonAreaEffectRadius();
+        int radius = configManager.getConfig().getInt("pylon.area-effects.radius", 50);
         Random random = new Random();
         World world = pylonCenter.getWorld();
 

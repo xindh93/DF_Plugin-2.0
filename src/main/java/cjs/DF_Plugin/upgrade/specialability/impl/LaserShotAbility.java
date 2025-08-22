@@ -1,26 +1,23 @@
 package cjs.DF_Plugin.upgrade.specialability.impl;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
 import cjs.DF_Plugin.upgrade.specialability.ISpecialAbility;
-import org.bukkit.Color;
+import org.bukkit.FluidCollisionMode;
+import org.bukkit.Material;
 import org.bukkit.Particle;
-import org.bukkit.entity.Arrow;
+import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
 
 public class LaserShotAbility implements ISpecialAbility {
-
-    // 레이저 샷으로 인한 속도 증가량을 화살에 기록하기 위한 키
-    private static final String LASER_SHOT_VELOCITY_KEY = "laser_shot_velocity_multiplier";
 
     @Override
     public String getInternalName() {
@@ -44,56 +41,45 @@ public class LaserShotAbility implements ISpecialAbility {
 
     @Override
     public void onEntityShootBow(EntityShootBowEvent event, Player player, ItemStack item) {
-        if (!(event.getProjectile() instanceof Arrow arrow)) {
-            return;
-        }
-
         UpgradeManager upgradeManager = DF_Main.getInstance().getUpgradeManager();
         GameConfigManager configManager = DF_Main.getInstance().getGameConfigManager();
         int level = upgradeManager.getUpgradeLevel(item);
         int requiredLevel = configManager.getConfig().getInt("upgrade.special-abilities.laser_shot.details.required-level", 10);
 
         if (level >= requiredLevel) {
-            double velocityMultiplier = configManager.getConfig().getDouble("upgrade.special-abilities.laser_shot.details.velocity-multiplier", 3.0);
-            arrow.setVelocity(arrow.getVelocity().multiply(velocityMultiplier));
-            // 속도 증가량을 메타데이터에 저장하여, 피격 시 대미지를 보정하는 데 사용합니다.
-            arrow.setMetadata(LASER_SHOT_VELOCITY_KEY, new FixedMetadataValue(DF_Main.getInstance(), velocityMultiplier));
+            // 1. 화살 발사를 취소하고 즉발 레이저로 대체합니다.
+            event.setCancelled(true);
 
-            // 레이저 궤적 파티클을 생성합니다.
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (arrow.isDead() || arrow.isOnGround() || !arrow.isValid()) {
-                        this.cancel();
-                        return;
-                    }
-                    // 붉은색 파티클을 화살 위치에 생성합니다.
-                    arrow.getWorld().spawnParticle(Particle.END_ROD, arrow.getLocation(), 1, 0, 0, 0, 0);
-                }
-            }.runTaskTimer(DF_Main.getInstance(), 0L, 1L);
+            // 2. 레이저 속성 설정
+            double damage = configManager.getConfig().getDouble("upgrade.special-abilities.laser_shot.details.damage", 20.0);
+            double maxRange = configManager.getConfig().getDouble("upgrade.special-abilities.laser_shot.details.range", 100.0);
+            int glowDuration = configManager.getConfig().getInt("upgrade.special-abilities.laser_shot.details.glow-duration-seconds", 10);
+
+            // 3. 레이저 발사 위치 및 방향 설정
+            Location startPoint = player.getEyeLocation();
+            Vector direction = startPoint.getDirection();
+
+            // 4. 시각 효과를 먼저 생성합니다.
+            // 이렇게 하면 적중 여부와 관계없이 항상 동일한 위치에 파티클이 표시됩니다.
+            Location particleLocation = startPoint.clone().add(direction.clone().multiply(1.5));
+            player.getWorld().spawnParticle(Particle.SWEEP_ATTACK, particleLocation, 1, 0, 0, 0, 0);
+
+            // 5. 레이캐스트로 타겟 탐지
+            RayTraceResult result = player.getWorld().rayTrace(
+                    startPoint,
+                    direction,
+                    maxRange,
+                    FluidCollisionMode.NEVER,
+                    true,
+                    0.2,
+                    e -> e instanceof LivingEntity && !e.getUniqueId().equals(player.getUniqueId())
+            );
+
+            // 6. 타겟이 있으면 피해 및 효과 적용
+            if (result != null && result.getHitEntity() instanceof LivingEntity target) {
+                target.damage(damage, player);
+                target.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, glowDuration * 20, 0, true, false));
+            }
         }
-    }
-
-    @Override
-    public void onDamageByEntity(EntityDamageByEntityEvent event, Player player, ItemStack item) {
-        // 이 능력은 공격자(player)의 무기에서 발동됩니다.
-        if (!(event.getDamager() instanceof Arrow arrow) || !(event.getEntity() instanceof LivingEntity target)) {
-            return;
-        }
-
-        // 이 화살이 '레이저 샷'으로 발사된 것인지 확인합니다.
-        if (!arrow.hasMetadata(LASER_SHOT_VELOCITY_KEY)) {
-            return;
-        }
-
-        // 1. 속도 증가로 인해 비정상적으로 증폭된 기본 대미지를 원래대로 보정합니다.
-        double velocityMultiplier = arrow.getMetadata(LASER_SHOT_VELOCITY_KEY).get(0).asDouble();
-        double originalBaseDamage = event.getDamage() / velocityMultiplier;
-        event.setDamage(originalBaseDamage);
-
-        // 2. 10강 전용 발광 효과를 부여합니다.
-        GameConfigManager configManager = DF_Main.getInstance().getGameConfigManager();
-        int glowDuration = configManager.getConfig().getInt("upgrade.special-abilities.laser_shot.details.glow-duration-seconds", 10);
-        target.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, glowDuration * 20, 0, true, false));
     }
 }

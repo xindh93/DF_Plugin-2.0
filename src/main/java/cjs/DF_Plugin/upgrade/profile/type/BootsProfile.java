@@ -13,6 +13,8 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,7 +28,7 @@ public class BootsProfile implements IUpgradeableProfile {
     private static final UUID SPEED_MODIFIER_UUID = UUID.fromString("9F3D476D-C118-4544-8365-64846904B48E");
 
     @Override
-    public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
+    public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level) {
         // 1. 아이템의 모든 관련 속성을 초기화합니다.
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR);
         meta.removeAttributeModifier(Attribute.GENERIC_ARMOR_TOUGHNESS);
@@ -46,29 +48,33 @@ public class BootsProfile implements IUpgradeableProfile {
         // --- 로어 표시 수정 ---
         // 4. 기본 속성 표시(녹색 줄)를 숨깁니다.
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+    }
 
-        // 5. 강화 보너스 로어를 추가합니다.
-        lore.removeIf(line -> line.contains("추가 이동 속도:"));
+    @Override
+    public List<String> getPassiveBonusLore(org.bukkit.inventory.ItemStack item, int level) {
+        double speedBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.boots.speed-multiplier-per-level", 0.05) * level;
         if (speedBonus > 0) {
-            lore.add("");
-            lore.add("§b추가 이동 속도: +" + String.format("%.0f", speedBonus * 100) + "%");
+            return List.of("§b추가 이동 속도: +" + String.format("%.0f", speedBonus * 100) + "%");
         }
+        return Collections.emptyList();
+    }
 
-        // 6. 기존에 있을 수 있는 바닐라 스타일 로어를 먼저 제거합니다.
-        lore.removeIf(line -> line.contains("방어") || line.contains("방어 강도") || line.contains("밀치기 저항") || line.contains("이동 속도") || line.contains("발에 있을 때:"));
+    @Override
+    public List<String> getBaseStatsLore(org.bukkit.inventory.ItemStack item, int level) {
+        List<String> baseLore = new ArrayList<>();
+        baseLore.add("§7발에 있을 때:");
 
-        // 7. 바닐라 스타일로 속성 정보를 로어에 직접 추가합니다.
-        lore.add("§7발에 있을 때:");
-
-        // 로어에 표시할 값을 다시 계산합니다.
         double armor = getBaseArmorAttribute(item.getType(), "armor");
         double toughness = getBaseArmorAttribute(item.getType(), "toughness");
         double knockbackResistance = getBaseArmorAttribute(item.getType(), "knockbackResistance");
+        double speedBonus = DF_Main.getInstance().getGameConfigManager().getConfig().getDouble("upgrade.generic-bonuses.boots.speed-multiplier-per-level", 0.05) * level;
 
-        if (armor > 0) lore.add("§2 " + String.format("%.0f", armor) + " 방어");
-        if (toughness > 0) lore.add("§2 " + String.format("%.0f", toughness) + " 방어 강도");
-        if (knockbackResistance > 0) lore.add("§2 " + String.format("%.1f", knockbackResistance) + " 밀치기 저항");
-        if (speedBonus > 0) lore.add("§2 +" + String.format("%.0f", speedBonus * 100) + "% 이동 속도");
+        if (armor > 0) baseLore.add("§2 " + String.format("%.0f", armor) + " 방어");
+        if (toughness > 0) baseLore.add("§2 " + String.format("%.0f", toughness) + " 방어 강도");
+        if (knockbackResistance > 0) baseLore.add("§2 " + String.format("%.1f", knockbackResistance) + " 밀치기 저항");
+        if (speedBonus > 0) baseLore.add("§2 +" + String.format("%.0f", speedBonus * 100) + "% 이동 속도");
+
+        return baseLore;
     }
 
     private void applyBaseArmorAttributes(Material material, ItemMeta meta) {

@@ -1,7 +1,7 @@
 package cjs.DF_Plugin.pylon.beaconinteraction;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.settings.GameConfigManager;
+import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.pylon.PylonType;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -57,9 +57,24 @@ public class PylonStructureManager {
         if (world == null) return;
 
         GameConfigManager configManager = DF_Main.getInstance().getGameConfigManager();
-        Material baseMaterial = (type == PylonType.MAIN_CORE) ?
-                configManager.getMainCoreBaseMaterial() :
-                configManager.getAuxiliaryCoreBaseMaterial();
+        Material baseMaterial;
+        if (type == PylonType.MAIN_CORE) {
+            String materialName = configManager.getConfig().getString("pylon.installation.main-core-base-material", "DIAMOND_BLOCK").toUpperCase();
+            try {
+                baseMaterial = Material.valueOf(materialName);
+            } catch (IllegalArgumentException e) {
+                DF_Main.getInstance().getLogger().warning("Invalid material name for 'pylon.installation.main-core-base-material': " + materialName + ". Defaulting to DIAMOND_BLOCK.");
+                baseMaterial = Material.DIAMOND_BLOCK;
+            }
+        } else {
+            String materialName = configManager.getConfig().getString("pylon.installation.auxiliary-core-base-material", "IRON_BLOCK").toUpperCase();
+            try {
+                baseMaterial = Material.valueOf(materialName);
+            } catch (IllegalArgumentException e) {
+                DF_Main.getInstance().getLogger().warning("Invalid material name for 'pylon.installation.auxiliary-core-base-material': " + materialName + ". Defaulting to IRON_BLOCK.");
+                baseMaterial = Material.IRON_BLOCK;
+            }
+        }
 
         Location baseCenter = pylonLoc.clone().subtract(0, 1, 0);
         for (int x = -1; x <= 1; x++) {

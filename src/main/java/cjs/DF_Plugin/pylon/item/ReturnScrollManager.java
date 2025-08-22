@@ -1,8 +1,9 @@
 package cjs.DF_Plugin.pylon.item;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.util.PluginUtils;
+import cjs.DF_Plugin.util.item.PylonItemFactory;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -17,6 +18,7 @@ public class ReturnScrollManager {
 
     private final DF_Main plugin;
     private final Map<UUID, BukkitTask> castingPlayers = new HashMap<>();
+    private static final String PREFIX = "§b[귀환] §f";
 
     public ReturnScrollManager(DF_Main plugin) {
         this.plugin = plugin;
@@ -24,28 +26,28 @@ public class ReturnScrollManager {
 
     public void startCasting(Player player) {
         if (castingPlayers.containsKey(player.getUniqueId())) {
-            player.sendMessage("§c이미 귀환을 시도하고 있습니다.");
+            player.sendMessage(PREFIX + "§c이미 귀환을 시도하고 있습니다.");
             return;
         }
 
         Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
         if (clan == null || clan.getPylonLocations().isEmpty()) {
-            player.sendMessage("§c귀환할 파일런이 없습니다.");
+            player.sendMessage(PREFIX + "§c귀환할 파일런이 없습니다.");
             return;
         }
 
         World.Environment environment = player.getWorld().getEnvironment();
-        if (environment == World.Environment.NETHER && !plugin.getGameConfigManager().isReturnScrollAllowedInNether()) {
-            player.sendMessage("§c이곳에서는 귀환 주문서를 사용할 수 없습니다.");
+        if (environment == World.Environment.NETHER && !plugin.getGameConfigManager().getConfig().getBoolean("pylon.return-scroll.allow-in-nether", true)) {
+            player.sendMessage(PREFIX + "§c이곳에서는 귀환 주문서를 사용할 수 없습니다.");
             return;
         }
-        if (environment == World.Environment.THE_END && !plugin.getGameConfigManager().isReturnScrollAllowedInEnd()) {
-            player.sendMessage("§c이곳에서는 귀환 주문서를 사용할 수 없습니다.");
+        if (environment == World.Environment.THE_END && !plugin.getGameConfigManager().getConfig().getBoolean("pylon.return-scroll.allow-in-end", true)) {
+            player.sendMessage(PREFIX + "§c이곳에서는 귀환 주문서를 사용할 수 없습니다.");
             return;
         }
 
-        int castTime = plugin.getGameConfigManager().getReturnScrollCastTime();
-        player.sendMessage("§b" + castTime + "초 후 파일런으로 귀환합니다... (피격 시 취소)");
+        int castTime = plugin.getGameConfigManager().getConfig().getInt("pylon.return-scroll.cast-time-seconds", 5);
+        player.sendMessage(PREFIX + "§b" + castTime + "초 후 파일런으로 귀환합니다... (피격 시 취소)");
         player.playSound(player.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.7f, 1.5f);
 
         final Location startLocation = player.getLocation();
@@ -58,7 +60,7 @@ public class ReturnScrollManager {
                     teleportToPylonArea(player, clan);
                     consumeReturnScroll(player);
                     player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.2f);
-                    player.sendMessage("§b파일런 영역으로 귀환했습니다.");
+                    player.sendMessage(PREFIX + "§b파일런 영역으로 귀환했습니다.");
                 }
             }
         };
@@ -74,7 +76,7 @@ public class ReturnScrollManager {
             castingPlayers.get(player.getUniqueId()).cancel();
             castingPlayers.remove(player.getUniqueId());
             if (showMessage) {
-                player.sendMessage("§c귀환이 취소되었습니다.");
+                player.sendMessage(PREFIX + "§c귀환이 취소되었습니다.");
                 player.playSound(player.getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 0.7f, 1.0f);
             }
         }
@@ -90,7 +92,7 @@ public class ReturnScrollManager {
         Location pylonCenter = PluginUtils.deserializeLocation(pylonLocations.get(0));
 
         if (pylonCenter == null) {
-            player.sendMessage("§c귀환 위치를 찾는데 실패했습니다. 스폰 지역으로 이동합니다.");
+            player.sendMessage(PREFIX + "§c귀환 위치를 찾는데 실패했습니다. 스폰 지역으로 이동합니다.");
             player.teleport(player.getWorld().getSpawnLocation());
             return;
         }
@@ -150,9 +152,10 @@ public class ReturnScrollManager {
 
     private BukkitTask playCastEffect(Player player, int castTime, Location startLocation, Runnable onComplete) {
         return new BukkitRunnable() {
-            int ticks = 0;
-            final double radius = 1.2;
-            double yOffset = 0.2;
+            private int ticks = 0;
+            private final double radius = 0.8; // 폭을 줄임
+            private double yOffset = 0.1;
+            private final int totalTicks = castTime * 20;
 
             @Override
             public void run() {
@@ -167,22 +170,27 @@ public class ReturnScrollManager {
                     return;
                 }
 
-                if (ticks >= castTime * 20) {
+                if (ticks >= totalTicks) {
                     onComplete.run();
                     this.cancel();
                     return;
                 }
 
-                // 나선형 파티클 효과
+                // 시간에 따라 파티클 양 증가 (0.5초마다 1개씩 증가)
+                int particleAmount = 2 + (ticks / 10);
+
                 Location playerLoc = player.getLocation();
-                for (int i = 0; i < 3; i++) { // 3개의 나선
-                    double angle = (ticks * 10 + (i * 120)) * (Math.PI / 180);
+                for (int i = 0; i < particleAmount; i++) {
+                    // 각 파티클이 다른 각도에서 시작하도록 오프셋 추가
+                    double angle = (ticks * 12 + (i * (360.0 / particleAmount))) * (Math.PI / 180);
                     double x = radius * Math.cos(angle);
                     double z = radius * Math.sin(angle);
                     player.getWorld().spawnParticle(Particle.REVERSE_PORTAL, playerLoc.clone().add(x, yOffset, z), 1, 0, 0, 0, 0);
                 }
-                yOffset += 0.08; // 파티클이 위로 올라가는 속도
-
+                // 높이가 너무 높아지지 않도록 yOffset 증가량을 줄이고 최대 높이를 제한
+                if (yOffset < 1.8) {
+                    yOffset += 0.015;
+                }
                 ticks++;
             }
         }.runTaskTimer(plugin, 0L, 1L);

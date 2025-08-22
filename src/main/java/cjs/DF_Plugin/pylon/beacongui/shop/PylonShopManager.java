@@ -1,11 +1,11 @@
 package cjs.DF_Plugin.pylon.beacongui.shop;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
-import cjs.DF_Plugin.enchant.MagicStone;
-import cjs.DF_Plugin.items.ItemBuilder;
-import cjs.DF_Plugin.items.UpgradeItems;
-import cjs.DF_Plugin.pylon.item.PylonItemFactory;
+import cjs.DF_Plugin.pylon.clan.Clan;
+import cjs.DF_Plugin.world.enchant.MagicStone;
+import cjs.DF_Plugin.util.item.ItemBuilder;
+import cjs.DF_Plugin.upgrade.item.UpgradeItems;
+import cjs.DF_Plugin.util.item.PylonItemFactory;
 import cjs.DF_Plugin.util.InventoryUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -18,6 +18,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -88,12 +89,11 @@ public class PylonShopManager {
         int enchantScrollCost = config.getInt("pylon.shop.magic-stone-exchange.cost-level", 40);
         int enchantScrollGained = config.getInt("pylon.shop.magic-stone-exchange.gained", 128);
         gui.setItem(4, new ItemBuilder(Material.NETHER_STAR)
-                .withName("§6마석 교환")
+                .withName("§6마석 교환 §7[" + enchantScrollGained + "개]")
                 .withLore(
                         "§7자신의 경험치를 사용해 마석을 얻습니다.",
                         "",
-                        "§f가격: §a" + enchantScrollCost + " 레벨",
-                        "§f획득: §e마석 " + enchantScrollGained + "개"
+                        "§f가격: §a" + enchantScrollCost + " 레벨"
                 )
                 .withPDCString(SHOP_ITEM_KEY, "magic_stone")
                 .withPDCInt(SHOP_COST_KEY, enchantScrollCost)
@@ -103,12 +103,11 @@ public class PylonShopManager {
         int upgradeStoneCost = config.getInt("pylon.shop.upgrade-stone-exchange.cost-level", 40);
         int upgradeStoneGained = config.getInt("pylon.shop.upgrade-stone-exchange.gained", 128);
         gui.setItem(6, new ItemBuilder(Material.ECHO_SHARD)
-                .withName("§b강화석 교환")
+                .withName("§b강화석 교환 §7[" + upgradeStoneGained + "개]")
                 .withLore(
                         "§7자신의 경험치를 사용해 강화석을 얻습니다.",
                         "",
-                        "§f가격: §a" + upgradeStoneCost + " 레벨",
-                        "§f획득: §e강화석 " + upgradeStoneGained + "개"
+                        "§f가격: §a" + upgradeStoneCost + " 레벨"
                 )
                 .withPDCString(SHOP_ITEM_KEY, "upgrade_stone")
                 .withPDCInt(SHOP_COST_KEY, upgradeStoneCost)
@@ -116,7 +115,13 @@ public class PylonShopManager {
 
         // 슬롯 8: 보조 파일런 코어
         int auxCoreCostLevel = config.getInt("pylon.shop.aux-core.cost-level", 100);
-        gui.setItem(8, new ItemBuilder(Material.BEACON)
+        ItemStack auxCore = new ItemStack(Material.BEACON);
+        ItemMeta auxCoreMeta = auxCore.getItemMeta();
+        auxCoreMeta.addEnchant(Enchantment.LURE, 1, true);
+        auxCoreMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        auxCore.setItemMeta(auxCoreMeta);
+
+        gui.setItem(8, new ItemBuilder(auxCore)
                 .withName("§d보조 파일런 코어")
                 .withLore(
                         "§7주 파일런을 보조하는 코어를 구매합니다.",

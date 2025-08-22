@@ -1,8 +1,8 @@
 package cjs.DF_Plugin.events.end;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.enchant.MagicStone;
-import cjs.DF_Plugin.items.UpgradeItems;
+import cjs.DF_Plugin.world.enchant.MagicStone;
+import cjs.DF_Plugin.upgrade.item.UpgradeItems;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.WorldCreator;
@@ -91,18 +91,18 @@ public class EndEventManager {
         if (currentState == State.OPEN) return;
 
         // 엔드를 열기 전에 항상 월드를 초기화하여 새로운 경험을 제공합니다.
-        plugin.getLogger().info("Resetting The End before opening...");
+        plugin.getLogger().info("[엔드 이벤트] Resetting The End before opening...");
         plugin.getWorldManager().resetWorld("world_the_end");
 
         // 월드가 로드되었는지 확인하고, 그렇지 않으면 생성합니다.
         World endWorld = Bukkit.getWorld("world_the_end");
         if (endWorld == null) {
-            plugin.getLogger().info("The End world is not loaded, creating it now...");
+            plugin.getLogger().info("[엔드 이벤트] The End world is not loaded, creating it now...");
             endWorld = new WorldCreator("world_the_end")
                     .environment(World.Environment.THE_END)
                     .createWorld();
             if (endWorld == null) {
-                plugin.getLogger().severe("엔드 월드를 생성하는 데 실패했습니다!");
+                plugin.getLogger().severe("[엔드 이벤트] 엔드 월드를 생성하는 데 실패했습니다!");
                 Bukkit.broadcastMessage("§c[오류] 엔드 월드를 생성하는 데 실패했습니다. 서버 관리자에게 문의하세요.");
                 return;
             }
@@ -125,7 +125,7 @@ public class EndEventManager {
                 player.playSound(player.getLocation(), Sound.BLOCK_END_PORTAL_SPAWN, 1.0f, 1.0f);
             }
         }
-        plugin.getLogger().info("The End has been opened.");
+        plugin.getLogger().info("[엔드 이벤트] The End has been opened.");
     }
 
     public void scheduleOpen(long minutes, boolean broadcast) {
@@ -148,7 +148,7 @@ public class EndEventManager {
         }
 
         openTask = Bukkit.getScheduler().runTaskLater(plugin, () -> openEnd(true), minutes * 60 * 20L);
-        plugin.getLogger().info("The End is scheduled to open in " + minutes + " minutes.");
+        plugin.getLogger().info("[엔드 이벤트] The End is scheduled to open in " + minutes + " minutes.");
     }
 
     /**
@@ -179,7 +179,7 @@ public class EndEventManager {
             scatterRewards(endWorld);
             Bukkit.broadcastMessage("§5[엔드 이벤트] §d엔더 드래곤이 쓰러졌습니다! 하늘에서 보상이 쏟아집니다!");
         } else {
-            plugin.getLogger().log(Level.WARNING, "엔드 월드가 로드되지 않아 보상을 지급할 수 없습니다.");
+            plugin.getLogger().log(Level.WARNING, "[엔드 이벤트] 엔드 월드가 로드되지 않아 보상을 지급할 수 없습니다.");
         }
 
         long delayMinutes = plugin.getGameConfigManager().getConfig().getLong("end-event.collapse-delay-minutes", 10);
@@ -258,7 +258,7 @@ public class EndEventManager {
         saveState();
 
         Bukkit.broadcastMessage("§5[엔드 이벤트] §4엔드 월드가 붕괴하여 닫혔습니다.");
-        plugin.getLogger().info("The End has been closed and is being reset.");
+        plugin.getLogger().info("[엔드 이벤트] The End has been closed and is being reset.");
 
         plugin.getWorldManager().resetWorld("world_the_end");
     }
@@ -298,7 +298,7 @@ public class EndEventManager {
     public void scatterRewards(World world) {
         FileConfiguration config = plugin.getGameConfigManager().getConfig();
         if (world.getEnvironment() != World.Environment.THE_END) {
-            plugin.getLogger().warning("보상 뿌리기는 엔드 월드에서만 가능합니다.");
+            plugin.getLogger().warning("[엔드 이벤트] 보상 뿌리기는 엔드 월드에서만 가능합니다.");
             return;
         }
 
@@ -313,7 +313,7 @@ public class EndEventManager {
         int totalItemsToDrop = ThreadLocalRandom.current().nextInt(minTotal, maxTotal + 1);
         int itemsDropped = 0;
 
-        plugin.getLogger().info(String.format("엔더 드래곤 보상을 뿌립니다. 총 %d개", totalItemsToDrop));
+        plugin.getLogger().info(String.format("[엔드 이벤트] 엔더 드래곤 보상을 뿌립니다. 총 %d개", totalItemsToDrop));
 
         while (itemsDropped < totalItemsToDrop) {
             // 랜덤 위치 생성

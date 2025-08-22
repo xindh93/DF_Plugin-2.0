@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.upgrade.specialability;
 
 import cjs.DF_Plugin.DF_Main;
+import java.util.AbstractMap;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.entity.Arrow;
@@ -77,6 +78,7 @@ public class SpecialAbilityListener implements Listener {
     @EventHandler
     public void onPlayerSwapHandItems(PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
+        // 모드 변경은 현재 주 손에 있는 삼지창에 적용됩니다.
         // PlayerSwapHandItemsEvent의 getMainHandItem()은 '부 손'에 있던 아이템(주 손으로 올 아이템)을 반환합니다.
         // 따라서 '주 손'에 있던 아이템을 확인하려면 getOffHandItem()을 사용해야 합니다.
         ItemStack tridentInMainHand = event.getOffHandItem();
@@ -234,7 +236,6 @@ public class SpecialAbilityListener implements Listener {
         getAbilityIfReady(itemInHand).ifPresent(ability ->
             ability.onPlayerToggleSneak(event, player, itemInHand));
     }
-
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
@@ -284,12 +285,9 @@ public class SpecialAbilityListener implements Listener {
     @EventHandler
     public void onEntityShootBow(EntityShootBowEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
-
         ItemStack bow = event.getBow();
         if (bow == null) return;
-
-        getAbilityIfReady(bow).ifPresent(ability ->
-            ability.onEntityShootBow(event, player, bow));
+        getAbilityIfReady(bow).ifPresent(ability -> ability.onEntityShootBow(event, player, bow));
     }
 
     @EventHandler
@@ -317,7 +315,6 @@ public class SpecialAbilityListener implements Listener {
     public void onPlayerRiptide(PlayerRiptideEvent event) {
         Player player = event.getPlayer();
         ItemStack item = event.getItem();
-
         getAbilityIfReady(item).ifPresent(ability -> ability.onPlayerRiptide(event, player, item));
     }
 
@@ -343,7 +340,8 @@ public class SpecialAbilityListener implements Listener {
         // 불사의 토템이 사용되었을 때, 해당 능력에 쿨다운을 적용합니다.
         ISpecialAbility totemAbility = specialAbilityManager.getRegisteredAbility("totem_of_undying");
         if (totemAbility != null) {
-            specialAbilityManager.setCooldown(player, totemAbility, totemAbility.getCooldown());
+            double cooldown = totemAbility.getCooldown();
+            specialAbilityManager.setCooldown(player, totemAbility, cooldown);
         }
     }
 

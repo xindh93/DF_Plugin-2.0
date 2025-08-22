@@ -2,7 +2,6 @@ package cjs.DF_Plugin.upgrade;
 
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.upgrade.gui.UpgradeGUI;
-import cjs.DF_Plugin.items.UpgradeItems;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -27,6 +26,7 @@ public class UpgradeListener implements Listener {
     private final DF_Main plugin;
     private final UpgradeManager upgradeManager;
     private final UpgradeGUI upgradeGUI;
+    private static final String PREFIX = "§6[강화] §f";
 
     private static final Set<Material> ANVIL_TYPES = Set.of(
             Material.ANVIL,
@@ -97,7 +97,7 @@ public class UpgradeListener implements Listener {
         ItemStack targetItem = inventory.getItem(UpgradeGUI.UPGRADE_ITEM_SLOT);
 
         if (targetItem == null || targetItem.isSimilar(UpgradeGUI.createAnvilPlaceholder())) {
-            player.sendMessage(ChatColor.RED + "강화할 아이템을 올려주세요.");
+            player.sendMessage(PREFIX + "§c강화할 아이템을 올려주세요.");
             return;
         }
 
@@ -127,10 +127,9 @@ public class UpgradeListener implements Listener {
                 inventory.setItem(UpgradeGUI.UPGRADE_ITEM_SLOT, clickedItem.clone());
                 event.setCurrentItem(null);
 
-                // 아이템을 올렸을 때 소리 재생
                 player.playSound(player.getLocation(), Sound.UI_STONECUTTER_TAKE_RESULT, 0.7f, 1.5f);
             } else {
-                player.sendMessage(ChatColor.RED + "이 아이템은 강화할 수 없습니다.");
+                player.sendMessage(PREFIX + "§c이 아이템은 강화할 수 없습니다.");
             }
         }
     }
@@ -140,7 +139,7 @@ public class UpgradeListener implements Listener {
         if (!notAdded.isEmpty()) {
             Location loc = player.getLocation();
             notAdded.values().forEach(item -> loc.getWorld().dropItem(loc, item));
-            player.sendMessage(ChatColor.YELLOW + "인벤토리가 가득 차 아이템이 바닥에 드롭되었습니다.");
+            player.sendMessage(PREFIX + "§e인벤토리가 가득 차 아이템이 바닥에 드롭되었습니다.");
         }
     }
 }

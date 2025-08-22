@@ -39,21 +39,21 @@ public class PlayerDeathManager implements Listener {
                         deadPlayers.put(uuid, config.getLong("players." + uuidString + ".death.timestamp"));
                     }
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Invalid UUID found in playerdata.yml: " + uuidString);
+                    plugin.getLogger().warning("[사망 관리] Invalid UUID found in playerdata.yml: " + uuidString);
                 }
             });
         }
-        plugin.getLogger().info("Loaded " + deadPlayers.size() + " death ban entries.");
+        plugin.getLogger().info("[사망 관리] Loaded " + deadPlayers.size() + " death ban entries.");
     }
 
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
-        final boolean deathBanEnabled = plugin.getGameConfigManager().isDeathTimerEnabled();
+        final boolean deathBanEnabled = plugin.getGameConfigManager().getConfig().getBoolean("death-timer.enabled", true);
         if (!deathBanEnabled) return;
 
         Player player = event.getEntity();
         // config.yml의 death-timer.time은 분 단위로 저장됩니다.
-        final int banDurationMinutes = plugin.getGameConfigManager().getDeathTimerDurationMinutes();
+        final int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("death-timer.time", 60);
         deadPlayers.put(player.getUniqueId(), System.currentTimeMillis());
 
         // formatDuration은 분 단위를 받습니다.
@@ -97,7 +97,7 @@ public class PlayerDeathManager implements Listener {
      * 서버 종료 시 호출되어 모든 사망자 데이터를 파일에 저장합니다.
      */
     public void saveAllData() {
-        plugin.getLogger().info("Saving " + deadPlayers.size() + " death ban entries...");
+        plugin.getLogger().info("[사망 관리] Saving " + deadPlayers.size() + " death ban entries...");
         PlayerDataManager pdm = plugin.getPlayerDataManager();
         FileConfiguration config = pdm.getConfig();
         // 기존 데이터를 지우기 위해 players 섹션을 순회하며 death 관련 데이터만 제거
@@ -111,7 +111,7 @@ public class PlayerDeathManager implements Listener {
     private long getRemainingBanMillis(UUID playerUUID) {
         // config.yml의 death-timer.time은 분 단위로 저장됩니다.
         final long deathTime = deadPlayers.get(playerUUID);
-        final int banDurationMinutes = plugin.getGameConfigManager().getDeathTimerDurationMinutes();
+        final int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("death-timer.time", 60);
         final long banEndTime = deathTime + TimeUnit.MINUTES.toMillis(banDurationMinutes);
         return banEndTime - System.currentTimeMillis();
     }

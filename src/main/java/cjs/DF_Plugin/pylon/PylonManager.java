@@ -1,14 +1,13 @@
 package cjs.DF_Plugin.pylon;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.pylon.beaconinteraction.PylonAreaManager;
 import cjs.DF_Plugin.pylon.beaconinteraction.PylonStructureManager;
-import cjs.DF_Plugin.pylon.beaconinteraction.registration.AuxiliaryPylonRegistrationManager;
-import cjs.DF_Plugin.pylon.beaconinteraction.registration.BeaconRegistrationManager;
+import cjs.DF_Plugin.pylon.beaconinteraction.PylonRegistrationManager;
 import cjs.DF_Plugin.pylon.item.ReturnScrollManager;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
-import cjs.DF_Plugin.pylon.beacongui.recon.ReconManager;
+import cjs.DF_Plugin.pylon.item.ReconManager;
 import cjs.DF_Plugin.pylon.reinstall.PylonReinstallManager;
 import cjs.DF_Plugin.pylon.retrieval.PylonRetrievalManager;
 import cjs.DF_Plugin.util.PluginUtils;
@@ -19,8 +18,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 public class PylonManager {
 
     private final DF_Main plugin;
-    private final BeaconRegistrationManager registrationManager;
-    private final AuxiliaryPylonRegistrationManager auxiliaryRegistrationManager;
+    private final PylonRegistrationManager registrationManager;
     private final PylonAreaManager areaManager;
     private final BeaconGUIManager guiManager;
     private final PylonRetrievalManager retrievalManager;
@@ -32,8 +30,7 @@ public class PylonManager {
 
     public PylonManager(DF_Main plugin) {
         this.plugin = plugin;
-        this.registrationManager = new BeaconRegistrationManager(plugin);
-        this.auxiliaryRegistrationManager = new AuxiliaryPylonRegistrationManager(plugin);
+        this.registrationManager = new PylonRegistrationManager(plugin);
         this.areaManager = new PylonAreaManager(plugin);
         this.guiManager = new BeaconGUIManager(plugin);
         this.retrievalManager = new PylonRetrievalManager(plugin);
@@ -44,17 +41,13 @@ public class PylonManager {
         this.featureManager = new PylonFeatureManager(plugin);
 
         startAreaEffectTask();
-        plugin.getLogger().info("PylonManager loaded.");
+        plugin.getLogger().info("[파일런 관리] 파일런 시스템이 초기화되었습니다.");
     }
 
-    public BeaconRegistrationManager getRegistrationManager() {
+    public PylonRegistrationManager getRegistrationManager() {
         return registrationManager;
     }
-
-    public AuxiliaryPylonRegistrationManager getAuxiliaryRegistrationManager() {
-        return auxiliaryRegistrationManager;
-    }
-
+    
     public PylonAreaManager getAreaManager() {
         return areaManager;
     }
@@ -106,7 +99,7 @@ public class PylonManager {
      * 이를 통해 서버 재시작 후에도 파일런 보호 및 효과가 즉시 적용됩니다.
      */
     public void loadExistingPylons() {
-        plugin.getLogger().info("Loading existing pylons...");
+        plugin.getLogger().info("[파일런 관리] 기존 파일런 정보를 불러옵니다...");
         int count = 0;
         for (Clan clan : plugin.getClanManager().getAllClans()) {
             for (String locString : clan.getPylonLocations().keySet()) {
@@ -117,7 +110,7 @@ public class PylonManager {
                 }
             }
         }
-        plugin.getLogger().info("Successfully loaded " + count + " existing pylons.");
+        plugin.getLogger().info("[파일런 관리] " + count + "개의 파일런을 성공적으로 불러왔습니다.");
     }
 
     private void startAreaEffectTask() {

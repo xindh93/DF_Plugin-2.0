@@ -24,7 +24,7 @@ public class AxeProfile implements IUpgradeableProfile {
     private static final ISpecialAbility CLEANSING_ABILITY = new CleansingAbility();
 
     @Override
-    public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level, List<String> lore) {
+    public void applyAttributes(org.bukkit.inventory.ItemStack item, ItemMeta meta, int level) {
         // 1. 기존 인챈트 로직을 적용합니다.
         Map<Enchantment, Double> enchantBonuses = new LinkedHashMap<>();
         enchantBonuses.put(Enchantment.EFFICIENCY, 0.5);

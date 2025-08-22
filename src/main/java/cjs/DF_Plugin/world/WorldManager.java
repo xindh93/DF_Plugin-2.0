@@ -1,7 +1,7 @@
 package cjs.DF_Plugin.world;
 
 import cjs.DF_Plugin.DF_Main;
-import cjs.DF_Plugin.clan.Clan;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.util.PluginUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
@@ -50,11 +50,18 @@ public class WorldManager {
      * @param world 규칙을 적용할 월드
      */
     public void applyRulesToWorld(World world) {
-        boolean keepInventory = plugin.getGameConfigManager().isWorldRuleKeepInventory();
-        boolean locationInfoDisabled = plugin.getGameConfigManager().isWorldRuleLocationInfoDisabled();
-        boolean phantomDisabled = plugin.getGameConfigManager().isWorldRulePhantomDisabled();
-        boolean locatorBarDisabled = plugin.getGameConfigManager().isWorldRuleLocatorBarDisabled();
-        Difficulty difficulty = plugin.getGameConfigManager().getWorldDifficulty();
+        boolean keepInventory = plugin.getGameConfigManager().getConfig().getBoolean("world.rules.keep-inventory", true);
+        boolean locationInfoDisabled = plugin.getGameConfigManager().getConfig().getBoolean("world.rules.location-info-disabled", true);
+        boolean phantomDisabled = plugin.getGameConfigManager().getConfig().getBoolean("world.rules.phantom-disabled", true);
+        boolean locatorBarDisabled = plugin.getGameConfigManager().getConfig().getBoolean("world.rules.locator-bar-disabled", true);
+        Difficulty difficulty;
+        String difficultyName = plugin.getGameConfigManager().getConfig().getString("world.rules.difficulty", "HARD").toUpperCase();
+        try {
+            difficulty = Difficulty.valueOf(difficultyName);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("[월드 관리] Invalid difficulty '" + difficultyName + "' in config.yml. Defaulting to HARD.");
+            difficulty = Difficulty.HARD;
+        }
 
         world.setGameRule(GameRule.KEEP_INVENTORY, keepInventory);
         world.setGameRule(GameRule.REDUCED_DEBUG_INFO, locationInfoDisabled);
@@ -78,9 +85,9 @@ public class WorldManager {
      * 월드 보더 크기를 적용합니다.
      */
     private void applyWorldBorders() {
-        double overworldSize = plugin.getGameConfigManager().getWorldBorderOverworldSize();
-        boolean endEnabled = plugin.getGameConfigManager().isWorldBorderEndEnabled();
-        double endSize = plugin.getGameConfigManager().getWorldBorderEndSize();
+        double overworldSize = plugin.getGameConfigManager().getConfig().getDouble("world.border.overworld-size", 20000);
+        boolean endEnabled = plugin.getGameConfigManager().getConfig().getBoolean("world.border.end-enabled", true);
+        double endSize = plugin.getGameConfigManager().getConfig().getDouble("world.border.end-size", 1000);
 
         for (World world : Bukkit.getWorlds()) {
             WorldBorder border = world.getWorldBorder();
@@ -115,7 +122,7 @@ public class WorldManager {
             // 해시의 일부를 사용하여 폴더 이름이 너무 길어지는 것을 방지합니다.
             return "clan_nether_" + hexString.toString().substring(0, 16);
         } catch (NoSuchAlgorithmException e) {
-            plugin.getLogger().log(Level.SEVERE, "SHA-1 알고리즘을 찾을 수 없어, 안전하지 않은 월드 이름으로 대체합니다.", e);
+            plugin.getLogger().log(Level.SEVERE, "[월드 관리] SHA-1 알고리즘을 찾을 수 없어, 안전하지 않은 월드 이름으로 대체합니다.", e);
             // SHA-1을 사용할 수 없는 극단적인 경우에 대한 대체 로직
             return "clan_nether_" + clanName.toLowerCase().replaceAll("[^a-z0-9_]", "");
         }
@@ -141,15 +148,15 @@ public class WorldManager {
         World world = Bukkit.getWorld(worldKey);
 
         if (world == null) {
-            plugin.getLogger().info("가문 '" + clan.getName() + "'을(를) 위한 지옥 월드를 생성합니다 (월드 ID: " + worldKey + ")");
+            plugin.getLogger().info("[월드 관리] 가문 '" + clan.getName() + "'을(를) 위한 지옥 월드를 생성합니다 (월드 ID: " + worldKey + ")");
             WorldCreator wc = new WorldCreator(worldKey);
             wc.environment(World.Environment.NETHER);
             world = wc.createWorld();
             if (world != null) {
                 applyRulesToWorld(world);
-                plugin.getLogger().info("지옥 월드를 성공적으로 생성했습니다: " + world.getName());
+                plugin.getLogger().info("[월드 관리] 지옥 월드를 성공적으로 생성했습니다: " + world.getName());
             } else {
-                plugin.getLogger().severe("가문 '" + clan.getName() + "'의 지옥 월드 생성에 실패했습니다.");
+                plugin.getLogger().severe("[월드 관리] 가문 '" + clan.getName() + "'의 지옥 월드 생성에 실패했습니다.");
             }
         }
         return world;
@@ -171,7 +178,7 @@ public class WorldManager {
 
             // 월드 언로드
             if (!Bukkit.unloadWorld(world, false)) {
-                plugin.getLogger().severe("월드(" + worldName + ")를 언로드할 수 없습니다. 초기화에 실패했습니다.");
+                plugin.getLogger().severe("[월드 관리] 월드(" + worldName + ")를 언로드할 수 없습니다. 초기화에 실패했습니다.");
                 return; // 언로드 실패 시 폴더 삭제를 진행하지 않습니다.
             }
         }
@@ -181,9 +188,9 @@ public class WorldManager {
         if (worldFolder.exists()) {
             try {
                 deleteDirectory(worldFolder);
-                plugin.getLogger().info("월드 폴더(" + worldName + ")를 성공적으로 삭제했습니다. 다음 접근 시 재생성됩니다.");
+                plugin.getLogger().info("[월드 관리] 월드 폴더(" + worldName + ")를 성공적으로 삭제했습니다. 다음 접근 시 재생성됩니다.");
             } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "월드 폴더(" + worldName + ") 삭제에 실패했습니다.", e);
+                plugin.getLogger().log(Level.SEVERE, "[월드 관리] 월드 폴더(" + worldName + ") 삭제에 실패했습니다.", e);
             }
         }
     }
@@ -215,7 +222,7 @@ public class WorldManager {
                 if (pylonLoc != null && pylonLoc.getWorld() != null) {
                     Location safeTeleportLoc = pylonLoc.getWorld().getHighestBlockAt(pylonLoc).getLocation().add(0.5, 1.5, 0.5);
                     player.teleport(safeTeleportLoc);
-                    player.sendMessage("§a안전한 장소(가문 파일런)로 귀환했습니다.");
+                    player.sendMessage("§a[귀환] §f안전한 장소(가문 파일런)로 이동했습니다.");
                     return;
                 }
             }
@@ -224,7 +231,7 @@ public class WorldManager {
         World mainWorld = Bukkit.getWorlds().get(0);
         if (mainWorld != null) {
             player.teleport(mainWorld.getSpawnLocation());
-            player.sendMessage("§a안전한 장소(스폰)로 귀환했습니다.");
+            player.sendMessage("§a[귀환] §f안전한 장소(스폰)로 이동했습니다.");
         } else {
             player.kickPlayer("안전한 귀환 장소를 찾을 수 없습니다. 서버 관리자에게 문의하세요.");
         }
