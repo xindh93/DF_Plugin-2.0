@@ -31,8 +31,8 @@ public class PylonRegistrationManager {
 
         // 4. 타입에 따른 추가 처리 및 메시지 전송
         if (type == PylonType.MAIN_CORE) {
-            // 재설치 타이머가 있다면 취소
-            plugin.getPylonManager().getReinstallManager().cancelReinstallTimer(player);
+            // 파일런을 성공적으로 설치했으므로, 재설치 마감 기한을 완료 처리합니다.
+            plugin.getPylonManager().getReinstallManager().completeReinstallation(player);
             player.sendMessage(MAIN_PYLON_PREFIX + "파일런 코어가 성공적으로 설치 및 활성화되었습니다!");
         } else if (type == PylonType.AUXILIARY) {
             player.sendMessage(AUX_PYLON_PREFIX + "보조 파일런이 성공적으로 설치 및 활성화되었습니다!");

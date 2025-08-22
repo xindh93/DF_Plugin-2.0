@@ -93,6 +93,11 @@ public class OfflinePlayerManager implements Listener {
             return; // 사망 밴 상태의 플레이어는 아바타를 남기지 않습니다.
         }
 
+        // 관전자 모드인 플레이어는 아바타를 남기지 않습니다.
+        if (player.getGameMode() == GameMode.SPECTATOR) {
+            return;
+        }
+
         // 플레이어의 머리 아이템을 생성하고 playerdata.yml에 저장합니다.
         ItemStack playerHead = getPlayerHead(player);
         plugin.getPlayerDataManager().setPlayerHead(player.getUniqueId(), playerHead);

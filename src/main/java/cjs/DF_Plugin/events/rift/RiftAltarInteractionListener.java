@@ -3,10 +3,13 @@ package cjs.DF_Plugin.events.rift;
 import cjs.DF_Plugin.DF_Main;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
@@ -42,6 +45,28 @@ public class RiftAltarInteractionListener implements Listener {
         Location eggLoc = plugin.getRiftManager().getAltarLocation();
         if (eggLoc != null && eggLoc.equals(event.getClickedBlock().getLocation())) {
             event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPistonExtend(BlockPistonExtendEvent event) {
+        for (Block block : event.getBlocks()) {
+            // 피스톤에 의해 밀리는 블록 중 하나라도 제단 블록이면 이벤트를 취소합니다.
+            if (plugin.getRiftManager().isAltarBlock(block.getLocation())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPistonRetract(BlockPistonRetractEvent event) {
+        for (Block block : event.getBlocks()) {
+            // 피스톤에 의해 당겨지는 블록 중 하나라도 제단 블록이면 이벤트를 취소합니다.
+            if (plugin.getRiftManager().isAltarBlock(block.getLocation())) {
+                event.setCancelled(true);
+                return;
+            }
         }
     }
 }

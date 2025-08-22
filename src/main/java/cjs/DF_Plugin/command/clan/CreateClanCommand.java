@@ -82,8 +82,19 @@ public class CreateClanCommand {
                     player.sendMessage("§c[가문] §c가문 이름을 먼저 설정해주세요.");
                     return true;
                 }
+                // createClan 메서드는 이름이나 색상이 중복될 경우 null을 반환하고,
+                // 해당 메서드 내에서 플레이어에게 오류 메시지를 보냅니다.
                 Clan newClan = clanManager.createClan(session.name, player, session.color);
-                player.sendMessage("§a[가문] §a가문 '" + session.color + session.name + "§a'이(가) 성공적으로 생성되었습니다!");
+                if (newClan == null) {
+                    // 생성 실패 시, UI를 최신 정보로 갱신하여 다시 보여줍니다.
+                    // (다른 플레이어가 그 사이에 같은 이름/색상으로 가문을 만들었을 수 있음)
+                    List<org.bukkit.ChatColor> currentAvailableColors = clanManager.getAvailableColors();
+                    session.refreshAvailableColors(currentAvailableColors);
+                    uiManager.openCreationUI(player, session);
+                    return true;
+                }
+
+                player.sendMessage("§a[가문] §a가문 '" + newClan.getFormattedName() + "§a'이(가) 성공적으로 생성되었습니다!");
 
                 // 주 파일런 코어 지급
                 player.getInventory().addItem(PylonItemFactory.createMainCore());

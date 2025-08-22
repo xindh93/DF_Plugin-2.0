@@ -4,6 +4,7 @@ import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.data.ClanDataManager;
 import cjs.DF_Plugin.data.InventoryDataManager;
 import cjs.DF_Plugin.command.clan.ClanUIManager;
+import cjs.DF_Plugin.events.rift.RiftManager;
 import cjs.DF_Plugin.world.enchant.MagicStone;
 import cjs.DF_Plugin.upgrade.item.UpgradeItems;
 import cjs.DF_Plugin.pylon.PylonType;
@@ -17,6 +18,8 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.meta.CompassMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
@@ -115,6 +118,7 @@ public class ClanManager {
             // 인벤토리 로드
             Inventory pylonStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
             idm.loadInventory(pylonStorage, "pylon_storage", clanName);
+            updatePylonStorageDynamicSlot(pylonStorage); // 서버 로드 시 동적 슬롯을 즉시 업데이트합니다.
             pylonStorages.put(clanName, pylonStorage);
 
             Inventory giftBox = Bukkit.createInventory(null, 27, clan.getFormattedName() + "§f의 선물상자");
@@ -442,13 +446,9 @@ public class ClanManager {
             return;
         }
 
-        Inventory storage = pylonStorages.computeIfAbsent(clan.getName(), clanName -> {
-            Inventory newStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
-            plugin.getInventoryDataManager().loadInventory(newStorage, "pylon_storage", clanName);
-            return newStorage;
-        });
-
-        player.openInventory(storage);
+        Inventory storage = getPylonStorage(clan); // 먼저 인벤토리를 가져오거나 로드합니다.
+        updatePylonStorageDynamicSlot(storage); // 인벤토리를 열기 직전에 동적 슬롯을 업데이트합니다.
+        player.openInventory(storage); // 업데이트된 인벤토리를 엽니다.
     }
 
     /**
@@ -461,9 +461,50 @@ public class ClanManager {
         if (clan == null) return null;
         return pylonStorages.computeIfAbsent(clan.getName(), clanName -> {
             Inventory newStorage = Bukkit.createInventory(null, 54, clan.getFormattedName() + "§f의 파일런 창고");
-            plugin.getInventoryDataManager().loadInventory(newStorage, "pylon_storage", clanName);
+            plugin.getInventoryDataManager().loadInventory(newStorage, "pylon_storage", clanName); // 파일에서 로드
+            // 로드 시 배리어/나침반 설정은 openPylonStorage에서 동적으로 처리하므로 여기서는 호출하지 않습니다.
             return newStorage;
         });
+    }
+
+    /**
+     * 모든 파일런 창고의 동적 슬롯을 현재 이벤트 상태에 맞게 업데이트합니다.
+     */
+    public void updateAllPylonStoragesDynamicSlot() {
+        pylonStorages.values().forEach(this::updatePylonStorageDynamicSlot);
+    }
+
+    /**
+     * 지정된 파일런 창고의 동적 슬롯(54번째)을 현재 이벤트 상태에 따라 나침반 또는 배리어로 설정합니다.
+     * @param storage 업데이트할 창고 인벤토리
+     */
+    public void updatePylonStorageDynamicSlot(Inventory storage) {
+        if (storage == null || storage.getSize() != 54) return;
+
+        RiftManager riftManager = plugin.getRiftManager();
+        if (riftManager != null && riftManager.isEventActive()) {
+            Location altarLocation = riftManager.getAltarLocation();
+            if (altarLocation != null) {
+                ItemStack compass = new ItemStack(Material.COMPASS);
+                ItemMeta meta = compass.getItemMeta();
+                if (meta instanceof CompassMeta compassMeta) {
+                    compassMeta.setDisplayName("§d균열의 나침반");
+                    compassMeta.setLore(Arrays.asList(
+                            "§7차원의 균열 위치를 가리킵니다.",
+                            "§c[주의] §7나침반은 제단과 같은 차원(오버월드)에서만 작동합니다.",
+                            "§e클릭하여 나침반을 획득하세요."
+                    ));
+                    Location lodestoneLocation = altarLocation.clone().subtract(0, 4, 0);
+                    compassMeta.setLodestone(lodestoneLocation);
+                    compassMeta.setLodestoneTracked(true);
+                    compass.setItemMeta(compassMeta);
+                }
+                storage.setItem(53, compass);
+                return; // 나침반 설정 후 종료
+            }
+        }
+        // 이벤트가 비활성이거나, 어떤 이유로든 나침반을 설정할 수 없는 경우 배리어를 설정합니다.
+        setBarrierInStorage(storage);
     }
 
     public Map<String, Inventory> getPylonStorages() {
@@ -563,6 +604,22 @@ public class ClanManager {
         plugin.getInventoryDataManager().saveConfig();
         // 변경된 클랜 데이터(lastGiftBoxTime)도 파일에 저장합니다.
         cdm.saveConfig();
+    }
+
+    /**
+     * 지정된 인벤토리의 마지막 칸에 시스템 슬롯(배리어)을 설정합니다.
+     * @param storage 대상 인벤토리
+     */
+    public void setBarrierInStorage(Inventory storage) {
+        if (storage == null || storage.getSize() != 54) return;
+
+        ItemStack barrier = new ItemStack(Material.BARRIER);
+        ItemMeta meta = barrier.getItemMeta();
+        meta.setDisplayName("§c[시스템 슬롯]");
+        meta.setLore(Collections.singletonList("§7이 슬롯은 사용할 수 없습니다."));
+        barrier.setItemMeta(meta);
+
+        storage.setItem(53, barrier);
     }
 
     public Map<String, Inventory> getGiftBoxInventories() {

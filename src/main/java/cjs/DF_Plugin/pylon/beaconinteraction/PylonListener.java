@@ -63,12 +63,9 @@ public class PylonListener implements Listener {
             return;
         }
 
-        long remainingCooldown = plugin.getPylonManager().getReinstallManager().getRemainingCooldown(player);
-        if (remainingCooldown > 0) {
-            String remainingTime = String.format("%02d시간 %02d분",
-                    TimeUnit.MILLISECONDS.toHours(remainingCooldown),
-                    TimeUnit.MILLISECONDS.toMinutes(remainingCooldown) % 60);
-            player.sendMessage(PREFIX + "§c파일런을 재설치하려면 " + remainingTime + " 더 기다려야 합니다.");
+        // 파일런 회수 후 재설치 기한이 지났는지 확인합니다.
+        if (plugin.getPylonManager().getReinstallManager().hasDeadlinePassed(player)) {
+            player.sendMessage(PREFIX + "§c파일런 재설치 기한이 지나 더 이상 설치할 수 없습니다.");
             event.setCancelled(true);
             return;
         }

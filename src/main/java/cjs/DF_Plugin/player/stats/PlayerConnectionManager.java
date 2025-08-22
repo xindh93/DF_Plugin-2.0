@@ -52,7 +52,7 @@ public class PlayerConnectionManager implements Listener {
 
             if (playerClan == null) {
                 // 가문이 없는 플레이어는 관전 모드로 전환
-                plugin.getSpectatorManager().setRestrictedSpectator(player);
+                plugin.getSpectatorManager().setSpectator(player);
                 player.sendMessage("§e[알림] §e게임이 진행 중이며 소속된 가문이 없어 관전 모드로 접속합니다.");
             } else {
                 player.setGameMode(GameMode.SURVIVAL);

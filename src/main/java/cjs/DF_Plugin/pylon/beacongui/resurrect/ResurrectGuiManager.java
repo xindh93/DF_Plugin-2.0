@@ -59,12 +59,14 @@ public class ResurrectGuiManager {
     }
 
     private ItemStack createResurrectionHead(OfflinePlayer deadPlayer) {
-        long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(deadPlayer.getUniqueId());
+        Long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(deadPlayer.getUniqueId());
+        if (deathTime == null) deathTime = 0L; // Should not happen, but for safety
         int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.duration-minutes", 60);
         long banEndTime = deathTime + TimeUnit.MINUTES.toMillis(banDurationMinutes);
         long remainingMillis = Math.max(0, banEndTime - System.currentTimeMillis());
 
-        long remainingMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis);
+        // 1분 미만으로 남아도 1분치 비용을 받도록 올림 처리합니다.
+        long remainingMinutes = (long) Math.ceil(remainingMillis / 60000.0);
         int costPerMinute = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.resurrection-cost-per-minute", 1);
         long totalCost = remainingMinutes * costPerMinute;
         String remainingTime = PluginUtils.formatTime(remainingMillis);
@@ -100,23 +102,34 @@ public class ResurrectGuiManager {
         UUID targetUUID = UUID.fromString(actionData.split(":")[1]);
         OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetUUID);
 
-        // Calculate cost again to be safe
-        long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(targetUUID);
-        int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.duration-minutes", 60);
-        long banEndTime = deathTime + TimeUnit.MINUTES.toMillis(banDurationMinutes);
-        long remainingMillis = Math.max(0, banEndTime - System.currentTimeMillis());
-        long remainingMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis);
-        int costPerMinute = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.resurrection-cost-per-minute", 1);
-        long totalCost = remainingMinutes * costPerMinute;
-
-        if (!player.getInventory().contains(Material.EMERALD, (int) totalCost)) {
-            player.sendMessage(PREFIX + "§c부활에 필요한 §a에메랄드§c가 부족합니다. (필요: " + totalCost + "개)");
+        // 사망 정보를 다시 확인합니다.
+        Long deathTime = plugin.getPlayerDeathManager().getDeadPlayers().get(targetUUID);
+        if (deathTime == null) {
+            player.sendMessage(PREFIX + "§c" + targetPlayer.getName() + "님은 더 이상 사망 상태가 아닙니다.");
             player.closeInventory();
             return;
         }
 
-        // Process resurrection
-        player.getInventory().removeItem(new ItemStack(Material.EMERALD, (int) totalCost));
+        // 비용을 다시 계산합니다.
+        int banDurationMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.duration-minutes", 60);
+        long banEndTime = deathTime + TimeUnit.MINUTES.toMillis(banDurationMinutes);
+        long remainingMillis = Math.max(0, banEndTime - System.currentTimeMillis());
+
+        // 1분 미만으로 남아도 1분치 비용을 받도록 올림 처리합니다.
+        long remainingMinutes = (long) Math.ceil(remainingMillis / 60000.0);
+        int costPerMinute = plugin.getGameConfigManager().getConfig().getInt("pylon.death-ban.resurrection-cost-per-minute", 1);
+        int totalCost = (int) (remainingMinutes * costPerMinute);
+
+        // 비용이 0보다 클 경우에만 아이템을 확인하고 제거합니다.
+        if (totalCost > 0) {
+            if (!player.getInventory().contains(Material.EMERALD, totalCost)) {
+                player.sendMessage(PREFIX + "§c부활에 필요한 §a에메랄드§c가 부족합니다. (필요: " + totalCost + "개)");
+                player.closeInventory();
+                return;
+            }
+            player.getInventory().removeItem(new ItemStack(Material.EMERALD, totalCost));
+        }
+
         plugin.getPlayerDeathManager().resurrectPlayer(targetUUID);
 
         player.sendMessage(PREFIX + "§a" + targetPlayer.getName() + "님을 성공적으로 부활시켰습니다!");

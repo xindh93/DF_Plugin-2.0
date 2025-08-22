@@ -82,7 +82,8 @@ public class PylonRetrievalManager {
 
         InventoryUtils.giveOrDropItems(leader, pylonItems.toArray(new ItemStack[0]));
         leader.sendMessage(PREFIX + "§a모든 파일런(" + pylonItems.size() + "개)을 회수했습니다.");
-        plugin.getPylonManager().getReinstallManager().startReinstallTimer(leader);
+        // 파일런을 회수했으므로, 재설치 마감 기한을 시작합니다.
+        plugin.getPylonManager().getReinstallManager().startReinstallDeadline(leader);
         return true;
     }
 

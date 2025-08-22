@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.Comparator;
 import java.util.Optional;
 
 public class SpectatorManager implements Listener {
@@ -28,22 +29,16 @@ public class SpectatorManager implements Listener {
 
     /**
      * 플레이어를 제한된 관전자 모드로 설정합니다.
-     * - 게임 모드를 SPECTATOR로 변경합니다.     *
+     * - 게임 모드를 SPECTATOR로 변경합니다.
      * - 다른 플레이어를 관전하도록 시도합니다.
      * @param player 관전자 모드로 설정할 플레이어
      */
-    public void setRestrictedSpectator(Player player) {
+    public void setSpectator(Player player) {
         player.setGameMode(GameMode.SPECTATOR);
 
         // 즉시 다른 플레이어를 관전하도록 시도합니다.
-        boolean hasTarget = trySetSpectatorTarget(player);
-
-        if (!hasTarget) {
-            // 관전할 대상이 없을 경우, 현재 위치에 고정시키기 위해
-            // 플레이어를 자신의 위치로 다시 텔레포트하여 상태를 갱신합니다.
-            // 이렇게 하면 onPlayerMove 이벤트가 즉시 올바르게 작동합니다.
-            player.teleport(player.getLocation());
-        }
+        // 관전할 대상이 없을 경우, onPlayerMove 이벤트가 이동을 막아줍니다.
+        trySetSpectatorTarget(player);
     }
 
     /**
@@ -72,12 +67,7 @@ public class SpectatorManager implements Listener {
         Player disconnectedPlayer = event.getPlayer();
         Bukkit.getOnlinePlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SPECTATOR && disconnectedPlayer.equals(p.getSpectatorTarget()))
-                .forEach(spectator -> {
-                    // 관전 대상이 나갔으므로, 다른 대상을 찾거나 위치를 고정합니다.
-                    if (!trySetSpectatorTarget(spectator)) {
-                        spectator.teleport(spectator.getLocation());
-                    }
-                });
+                .forEach(this::trySetSpectatorTarget);
     }
 
     /**
@@ -90,17 +80,28 @@ public class SpectatorManager implements Listener {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    setRestrictedSpectator(event.getPlayer());
+                    setSpectator(event.getPlayer());
                 }
             }.runTaskLater(plugin, 1L);
         }
     }
 
     private boolean trySetSpectatorTarget(Player spectator) {
+        // 먼저, 관전자와 같은 월드에 있는 가장 가까운 플레이어를 찾습니다.
         Optional<? extends Player> targetPlayer = Bukkit.getOnlinePlayers().stream()
                 .filter(p -> !p.equals(spectator)) // 자기 자신은 제외
                 .filter(p -> p.getGameMode() != GameMode.SPECTATOR) // 다른 관전자는 관전하지 않음
-                .findAny(); // 아무 다른 플레이어
+                .filter(p -> p.getWorld().equals(spectator.getWorld())) // 같은 월드에 있는 플레이어만
+                .min(Comparator.comparingDouble(p -> p.getLocation().distanceSquared(spectator.getLocation())));
+
+        // 만약 같은 월드에 관전할 대상이 없다면, 다른 월드의 플레이어라도 찾습니다.
+        if (targetPlayer.isEmpty()) {
+            targetPlayer = Bukkit.getOnlinePlayers().stream()
+                    .filter(p -> !p.equals(spectator))
+                    .filter(p -> p.getGameMode() != GameMode.SPECTATOR)
+                    .findAny();
+        }
+
         targetPlayer.ifPresent(spectator::setSpectatorTarget);
         return targetPlayer.isPresent();
     }
@@ -124,6 +125,7 @@ public class SpectatorManager implements Listener {
             }
         }.runTaskTimer(plugin, 20L, 20L); // 1초마다 실행
     }
+
 
     public void stopSpectatorCheckTask() {
         if (spectatorCheckTask != null) {

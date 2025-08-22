@@ -13,8 +13,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemFlag;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -230,6 +232,91 @@ public class ReconManager implements Listener {
         player.getInventory().setChestplate(original); // original이 null일 수 있으며, 이는 정상입니다.
     }
 
+    /**
+     * 정찰 임무 중이던 플레이어가 재접속하면 즉시 파일런으로 귀환시킵니다.
+     */
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (reconPlayers.containsKey(player.getUniqueId())) {
+            player.sendMessage(PREFIX + "정찰 임무 중 재접속하여 파일런으로 즉시 귀환합니다.");
+            teleportAndEndRecon(player);
+        }
+    }
+
+    /**
+     * 정찰 임무 중인 플레이어, 특히 리더가 접속을 종료했을 때의 상황을 처리합니다.
+     */
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        UUID playerUUID = player.getUniqueId();
+
+        // 만약 접속 종료한 플레이어가 정찰대의 리더였다면, 남은 파티원들의 귀환 절차를 즉시 시작합니다.
+        if (reconParties.containsKey(playerUUID)) {
+            List<UUID> partyUUIDs = reconParties.remove(playerUUID);
+            if (partyUUIDs == null) return;
+
+            int returnMinutes = plugin.getGameConfigManager().getConfig().getInt("pylon.recon-firework.return-duration-minutes", 1);
+            long returnTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(returnMinutes);
+
+            for (UUID memberUUID : partyUUIDs) {
+                if (memberUUID.equals(playerUUID)) continue; // 방금 나간 리더는 제외
+
+                Player member = Bukkit.getPlayer(memberUUID);
+                if (member != null && member.isOnline()) {
+                    reconPlayers.put(memberUUID, ReconState.LANDED);
+                    returnTimers.put(memberUUID, returnTime);
+                    restoreChestplate(member);
+                    dismountStack(member);
+                    member.setGliding(false);
+                    member.sendMessage(PREFIX + "§c정찰대장이 연결을 종료하여 귀환 절차를 시작합니다.");
+                    member.sendMessage(PREFIX + returnMinutes + "분 후에 파일런으로 귀환합니다.");
+                }
+            }
+        }
+    }
+
+    /**
+     * 플레이어의 정찰 상태를 완전히 종료하고 정리합니다.
+     * @param player 대상 플레이어
+     */
+    private void endReconForPlayer(Player player) {
+        if (player == null) return;
+        UUID playerUUID = player.getUniqueId();
+
+        // 겉날개를 원래 갑옷으로 복원합니다.
+        restoreChestplate(player);
+
+        // 모든 관련 상태 맵에서 플레이어를 제거합니다.
+        reconPlayers.remove(playerUUID);
+        returnTimers.remove(playerUUID);
+
+        // 만약 플레이어가 파티의 리더였다면, 파티 정보도 정리합니다.
+        if (reconParties.containsKey(playerUUID)) {
+            reconParties.remove(playerUUID);
+        }
+    }
+
+    /**
+     * 플레이어를 안전한 파일런 위치로 귀환시키고, 정찰 상태를 완전히 종료합니다.
+     * @param player 귀환시킬 플레이어
+     */
+    private void teleportAndEndRecon(Player player) {
+        if (player == null || !player.isOnline()) return;
+
+        // 1. 안전한 위치로 텔레포트
+        Location safeLocation = plugin.getPlayerRespawnListener().getCustomRespawnLocation(player);
+        if (safeLocation != null) {
+            player.teleport(safeLocation);
+        } else {
+            plugin.getWorldManager().teleportPlayerToSafety(player);
+        }
+
+        // 2. 정찰 상태 완전 종료
+        endReconForPlayer(player);
+    }
+
     private void startReturnTask() {
         new BukkitRunnable() {
             @Override
@@ -237,28 +324,29 @@ public class ReconManager implements Listener {
                 if (returnTimers.isEmpty()) return;
 
                 long now = System.currentTimeMillis();
-                returnTimers.entrySet().removeIf(entry -> {
-                    if (now >= entry.getValue()) {
-                        Player player = Bukkit.getPlayer(entry.getKey());
-                        if (player != null) {
-                            // 귀환 시점에는 reconPlayers 맵에서 제거되었을 수 있으므로, 상태와 무관하게 귀환 처리
-                            Clan clan = plugin.getClanManager().getClanByPlayer(entry.getKey());
-                            if (clan != null && !clan.getPylonLocations().isEmpty()) {
-                                String locString = clan.getPylonLocations().keySet().iterator().next();
-                                Location pylonLoc = PluginUtils.deserializeLocation(locString);
-                                if (pylonLoc != null) {
-                                    player.teleport(pylonLoc.add(0.5, 1, 0.5));
-                                    player.sendMessage(PREFIX + "파일런으로 귀환했습니다.");
-                                }
-                            }
-                        }
-                        reconPlayers.remove(entry.getKey());
-                        return true; // Remove from map
+                List<UUID> expiredUUIDs = new ArrayList<>();
+
+                // 수정 중 예외를 피하기 위해 만료된 UUID를 먼저 수집합니다.
+                returnTimers.forEach((uuid, time) -> {
+                    if (now >= time) {
+                        expiredUUIDs.add(uuid);
                     }
-                    return false;
                 });
+
+                // 수집된 UUID를 기반으로 귀환 및 정리 작업을 수행합니다.
+                for (UUID uuid : expiredUUIDs) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null && player.isOnline()) {
+                        player.sendMessage(PREFIX + "정찰 시간이 만료되어 파일런으로 귀환합니다.");
+                        teleportAndEndRecon(player); // 텔레포트 및 모든 상태 정리
+                    } else {
+                        // 플레이어가 오프라인이면, 타이머만 제거합니다.
+                        // 재접속 시 onPlayerJoin 이벤트가 처리합니다.
+                        returnTimers.remove(uuid);
+                    }
+                }
             }
-        }.runTaskTimer(plugin, 0L, 20L); // Check every second
+        }.runTaskTimer(plugin, 0L, 20L); // 1초마다 확인
     }
 
     private ItemStack createReconElytra() {

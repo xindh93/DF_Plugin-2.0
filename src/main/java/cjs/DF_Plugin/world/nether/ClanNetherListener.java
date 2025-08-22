@@ -11,6 +11,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
@@ -29,6 +30,20 @@ public class ClanNetherListener implements Listener {
         this.clanManager = plugin.getClanManager();
         this.worldManager = plugin.getWorldManager();
         this.pylonAreaManager = plugin.getPylonManager().getAreaManager();
+    }
+
+    @EventHandler
+    public void onPlayerLogin(PlayerLoginEvent event) {
+        // 서버 재시작 후 플레이어가 접속할 때, 해당 플레이어의 가문 지옥이 로드되어 있도록 보장합니다.
+        // 이를 통해 지옥에서 로그아웃한 플레이어가 0,0으로 이동하는 버그를 방지합니다.
+        Player player = event.getPlayer();
+        Clan clan = clanManager.getClanByPlayer(player.getUniqueId());
+
+        if (clan != null) {
+            // 이 메서드는 월드가 없으면 생성하고, 로드되어 있지 않으면 로드합니다.
+            // 월드가 이미 로드되어 있다면 아무 작업도 하지 않으므로, 성능에 미치는 영향은 미미합니다.
+            worldManager.getOrCreateClanNether(clan);
+        }
     }
 
     @EventHandler
@@ -79,6 +94,9 @@ public class ClanNetherListener implements Listener {
             event.setCancelled(true);
             return;
         }
+
+        // 가문 전용 지옥에 게임 규칙(인벤 세이브 등)이 항상 적용되도록 합니다.
+        worldManager.applyRulesToWorld(clanNether);
 
         // 올바른 목적지 Location 객체 생성
         Location from = event.getFrom();

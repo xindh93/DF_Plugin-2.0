@@ -5,6 +5,8 @@ import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.events.game.GameStartManager;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.event.player.PlayerPortalEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.util.Vector;
@@ -30,39 +32,67 @@ public class PlayerRespawnListener implements Listener {
     @EventHandler
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
-        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        Location customRespawnLoc = getCustomRespawnLocation(player);
 
-        if (clan == null) {
-            return; // 가문이 없으면 기본 부활 로직 따름
-        }
+        if (customRespawnLoc != null) {
+            event.setRespawnLocation(customRespawnLoc);
 
-        if (gameStartManager.isGameStarted()) {
-            // 게임 중일 때
-            if (clan.getPylonLocations().isEmpty()) {
-                // 파일런이 없으면 임시 부활 지점으로
-                Location tempRespawn = clan.getStartLocation();
-                if (tempRespawn != null) {
-                    event.setRespawnLocation(tempRespawn);
-                    player.sendMessage("§e[부활] §e설치된 파일런이 없어 임시 지점에서 부활합니다.");
-                }
-            } else {
-                // 파일런이 있으면 파일런에서 부활
-                setRespawnAtPylon(event, clan);
+            // 파일런이 없을 때 임시 지점에서 부활하는 경우에만 메시지를 보냅니다.
+            Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+            if (clan != null && gameStartManager.isGameStarted() && clan.getPylonLocations().isEmpty()) {
+                player.sendMessage("§e[부활] §e설치된 파일런이 없어 임시 지점에서 부활합니다.");
             }
-        } else if (!clan.getPylonLocations().isEmpty()) {
-            // 게임 중이 아닐 때 파일런이 있으면 파일런에서 부활
-            setRespawnAtPylon(event, clan);
         }
     }
 
-    private void setRespawnAtPylon(PlayerRespawnEvent event, Clan clan) {
-        String locString = clan.getPylonLocations().keySet().iterator().next();
-        Location pylonLoc = PluginUtils.deserializeLocation(locString);
-        if (pylonLoc != null && pylonLoc.getWorld() != null) {
-            // 파일런 주변의 안전한 리스폰 위치를 찾습니다.
-            Location safeRespawnLoc = findSafeRespawnLocation(pylonLoc);
-            event.setRespawnLocation(safeRespawnLoc);
+    /**
+     * 플레이어가 엔드 월드에서 나갈 때(엔드 포탈 사용 시) 부활 위치와 동일한 장소로 이동시킵니다.
+     */
+    @EventHandler
+    public void onPlayerLeaveEnd(PlayerPortalEvent event) {
+        if (event.getCause() != PlayerTeleportEvent.TeleportCause.END_PORTAL) {
+            return;
         }
+        if (event.getFrom().getWorld().getEnvironment() != World.Environment.THE_END) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        Location customExitLoc = getCustomRespawnLocation(player);
+
+        if (customExitLoc != null) {
+            event.setTo(customExitLoc);
+            player.sendMessage("§a[귀환] §f엔드에서 귀환하여 지정된 장소로 이동합니다.");
+        }
+    }
+
+    /**
+     * 플레이어의 상황에 맞는 커스텀 부활/귀환 위치를 결정합니다.
+     * @param player 대상 플레이어
+     * @return 커스텀 위치. 없으면 null.
+     */
+    public Location getCustomRespawnLocation(Player player) {
+        Clan clan = plugin.getClanManager().getClanByPlayer(player.getUniqueId());
+        if (clan == null) return null;
+
+        // 파일런이 있으면 파일런 주변에서 부활
+        if (!clan.getPylonLocations().isEmpty()) {
+            return getSafePylonRespawnLocation(clan);
+        }
+
+        // 파일런이 없고, 게임이 시작된 상태라면 임시 시작 지점에서 부활
+        if (gameStartManager.isGameStarted()) {
+            return clan.getStartLocation();
+        }
+
+        return null; // 그 외의 경우(게임 시작 전, 파일런 없음)는 기본 부활 로직 따름
+    }
+
+    private Location getSafePylonRespawnLocation(Clan clan) {
+        // 주 파일런 위치를 가져와서 안전한 리스폰 장소를 찾습니다.
+        return clan.getMainPylonLocationObject()
+                .map(this::findSafeRespawnLocation)
+                .orElse(null);
     }
 
     /**

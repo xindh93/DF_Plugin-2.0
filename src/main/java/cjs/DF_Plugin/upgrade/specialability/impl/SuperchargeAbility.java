@@ -234,7 +234,7 @@ public class SuperchargeAbility implements ISpecialAbility {
 
                     // 2. 주된 피해는 방어력을 무시하는 고정 피해로 적용합니다.
                     //    일반 피해로 1.0이 이미 들어갔으므로, 전체 피해량에서 1.0을 뺍니다.
-                    double fixedDamage = Math.max(0, damage);
+                    double fixedDamage = Math.max(0, damage - 1.0);
                     entity.setHealth(Math.max(0.0, entity.getHealth() - fixedDamage));
 
                     // 3. damage()에 의한 기본 넉백을 덮어쓰고, 커스텀 넉백을 적용합니다.

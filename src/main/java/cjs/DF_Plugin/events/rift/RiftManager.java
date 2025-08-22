@@ -1,6 +1,7 @@
 package cjs.DF_Plugin.events.rift;
 
 import cjs.DF_Plugin.DF_Main;
+import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -14,13 +15,16 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class RiftManager {
 
@@ -37,6 +41,7 @@ public class RiftManager {
     private static final String CONFIG_PATH_ACTIVE = CONFIG_PATH_ROOT + "active";
     private static final String CONFIG_PATH_LOCATION = CONFIG_PATH_ROOT + "location";
     private static final String CONFIG_PATH_START_TIME = CONFIG_PATH_ROOT + "start-time";
+    private static final String CONFIG_PATH_BREAKING_PROGRESS = CONFIG_PATH_ROOT + "breaking-progress";
 
     public RiftManager(DF_Main plugin) {
         this.plugin = plugin;
@@ -56,11 +61,39 @@ public class RiftManager {
                 return;
             }
             this.altarLocation = cjs.DF_Plugin.util.PluginUtils.deserializeLocation(locString);
-            long startTime = eventConfig.getLong(CONFIG_PATH_START_TIME);
 
-            // Resume the event
-            activateAltar(startTime);
+            World world = this.altarLocation.getWorld();
+            if (world == null) {
+                plugin.getLogger().severe("[차원의 균열] 이벤트 재개 실패: 제단이 있는 월드를 찾을 수 없습니다.");
+                cleanupAltar();
+                return;
+            }
+            Chunk altarChunk = this.altarLocation.getChunk();
 
+            // 비동기적으로 청크를 로드하여 서버 멈춤 현상을 방지합니다.
+            world.getChunkAtAsync(altarChunk.getX(), altarChunk.getZ()).thenAccept(chunk -> {
+                // 아래 코드는 청크 로딩이 완료된 후 메인 스레드에서 안전하게 실행됩니다.
+                chunk.setForceLoaded(true);
+                plugin.getLogger().info("[차원의 균열] 재개된 이벤트의 제단 청크(" + chunk.getX() + ", " + chunk.getZ() + ")를 강제 로드합니다.");
+
+                // [NEW] Load breaking progress
+                this.breakingProgress = eventConfig.getDouble(CONFIG_PATH_BREAKING_PROGRESS, 1.0);
+
+                long startTime = eventConfig.getLong(CONFIG_PATH_START_TIME);
+
+                // [FIX] 제단 블록 데이터를 로드하여 보호 기능을 복원합니다. (손상된 데이터 복구 기능 포함)
+                loadAltarData();
+
+                // [NEW] 제단 구조물을 다시 생성하여 서버 재시작 후에도 상태를 보장합니다.
+                plugin.getLogger().info("[차원의 균열] 제단 구조물을 다시 생성합니다...");
+                long eventDurationMillis = TimeUnit.HOURS.toMillis(plugin.getGameConfigManager().getConfig().getLong("events.rift.spawn-delay-hours", 1));
+                long elapsedTime = System.currentTimeMillis() - startTime;
+                boolean shouldEggBeSpawned = elapsedTime >= eventDurationMillis;
+                buildAltarStructure(shouldEggBeSpawned);
+
+                // Resume the event
+                activateAltar(startTime, shouldEggBeSpawned);
+            });
         } else if (eventConfig.contains(CONFIG_PATH_ROOT + "altar-blocks")) {
             // If event is not marked as active, but the data file exists, it's a leftover. Clean it up.
             plugin.getLogger().warning("[차원의 균열] 이전 이벤트에서 남은 제단 데이터를 발견했습니다. 정리를 시작합니다...");
@@ -72,6 +105,7 @@ public class RiftManager {
         if (isEventActive) {
             return;
         }
+        this.breakingProgress = 1.0; // [FIX] 새 이벤트 시작 시 진행도를 초기화합니다.
 
         World world = Bukkit.getWorlds().get(0);
         if (world.getEnvironment() != World.Environment.NORMAL) {
@@ -88,25 +122,39 @@ public class RiftManager {
         this.isEventActive = true;
         this.altarLocation = groundLocation.clone().add(0, 3, 0); // 알 위치를 기준으로 저장
 
-        // 1단계: 알을 제외한 제단만 먼저 생성합니다.
-        spawnAltar(groundLocation, false);
+        World altarWorld = this.altarLocation.getWorld();
+        Chunk altarChunk = this.altarLocation.getChunk();
 
-        // 이벤트 상태를 event_data.yml에 저장
-        FileConfiguration eventConfig = plugin.getEventDataManager().getConfig();
-        eventConfig.set(CONFIG_PATH_ACTIVE, true);
-        eventConfig.set(CONFIG_PATH_LOCATION, cjs.DF_Plugin.util.PluginUtils.serializeLocation(this.altarLocation));
-        long startTime = System.currentTimeMillis();
-        eventConfig.set(CONFIG_PATH_START_TIME, startTime);
-        plugin.getEventDataManager().saveConfig();
+        // 비동기적으로 청크를 로드하여 서버 멈춤 현상을 방지합니다.
+        altarWorld.getChunkAtAsync(altarChunk.getX(), altarChunk.getZ()).thenAccept(chunk -> {
+            // 아래 코드는 청크 로딩이 완료된 후 메인 스레드에서 안전하게 실행됩니다.
+            chunk.setForceLoaded(true);
+            plugin.getLogger().info("[차원의 균열] 제단 청크(" + chunk.getX() + ", " + chunk.getZ() + ")를 강제 로드합니다.");
 
-        saveAltarData(); // 제단 블록 구조 저장
+            // 1단계: 알을 제외한 제단만 먼저 생성합니다.
+            spawnAltar(groundLocation, false);
 
-        Bukkit.broadcastMessage("§d[차원의 균열] §f차원의 어딘가가 불안정합니다.");
-        Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 0.5f));
-        plugin.getLogger().info("[차원의 균열] 제단 생성 성공. 위치: " + groundLocation.getBlockX() + ", " + groundLocation.getBlockY() + ", " + groundLocation.getBlockZ());
+            // 이벤트 상태를 event_data.yml에 저장
+            FileConfiguration eventConfig = plugin.getEventDataManager().getConfig();
+            eventConfig.set(CONFIG_PATH_ACTIVE, true);
+            eventConfig.set(CONFIG_PATH_LOCATION, cjs.DF_Plugin.util.PluginUtils.serializeLocation(this.altarLocation));
+            long startTime = System.currentTimeMillis();
+            eventConfig.set(CONFIG_PATH_START_TIME, startTime);
+            plugin.getEventDataManager().saveConfig();
 
-        // 제단 활성화 및 보스바 시작
-        activateAltar(startTime);
+            saveAltarData(); // 제단 블록 구조 저장
+
+            Bukkit.broadcastMessage("§d[차원의 균열] §f차원의 어딘가가 불안정합니다.");
+
+            // 모든 가문 창고에 균열 위치를 가리키는 나침반을 배치합니다.
+            placeRiftCompassInStorages();
+
+            Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 0.5f));
+            plugin.getLogger().info("[차원의 균열] 제단 생성 성공. 위치: " + groundLocation.getBlockX() + ", " + groundLocation.getBlockY() + ", " + groundLocation.getBlockZ());
+
+            // 제단 활성화 및 보스바 시작
+            activateAltar(startTime, false);
+        });
     }
 
     private Location findOrPrepareLocation(World world) {
@@ -149,6 +197,9 @@ public class RiftManager {
         int worldMaxHeight = eggLocation.getWorld().getMaxHeight();
 
         // --- 1. 제단이 지어질 모든 위치의 '원래' 블록 데이터를 미리 저장 ---
+        // 로드스톤 층 (알 위치 -4)
+        saveOriginalBlock(eggLocation.clone().subtract(0, 4, 0), 0, 0, 0);
+
         // 네더라이트 층 (알 위치 -3)
         saveOriginalBlock(eggLocation.clone().subtract(0, 3, 0), 1, 0, 1);
         // 신호기 층 (알 위치 -2)
@@ -166,6 +217,19 @@ public class RiftManager {
         }
 
         // --- 2. 실제 제단 건설 ---
+        buildAltarStructure(withEgg);
+    }
+
+    private void buildAltarStructure(boolean withEgg) {
+        // 제단 구조의 기준점 설정
+        // altarLocation은 항상 드래곤 알의 위치를 가리킵니다.
+        Location eggLocation = this.altarLocation;
+        Location beaconLocation = eggLocation.clone().subtract(0, 2, 0); // 신호기는 알보다 2블록 아래
+        int worldMaxHeight = eggLocation.getWorld().getMaxHeight();
+
+        // 0. 숨겨진 로드스톤 설치 (알 위치 -4 중앙)
+        eggLocation.clone().subtract(0, 4, 0).getBlock().setType(Material.LODESTONE);
+
         // 1. 네더라이트 3x3 플랫폼 (알 위치 -3)
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
@@ -224,7 +288,7 @@ public class RiftManager {
         stairBlock.setBlockData(stairData);
     }
 
-    private void activateAltar(long startTime) {
+    private void activateAltar(long startTime, boolean initialEggState) {
         long eventDurationMillis = TimeUnit.HOURS.toMillis(plugin.getGameConfigManager().getConfig().getLong("events.rift.spawn-delay-hours", 1));
 
         altarStateBossBar = Bukkit.createBossBar("§d차원의 균열이 점점 커지고 있습니다...", BarColor.PURPLE, BarStyle.SOLID);
@@ -235,7 +299,8 @@ public class RiftManager {
         }
 
         altarStateUpdateTask = new BukkitRunnable() {
-            private boolean eggSpawned = altarLocation != null && altarLocation.getBlock().getType() == Material.DRAGON_EGG;
+            private boolean eggSpawned = initialEggState;
+            private long lastSaveTime = System.currentTimeMillis(); // 진행도 저장을 위한 타이머
 
             @Override
             public void run() {
@@ -259,7 +324,7 @@ public class RiftManager {
                         Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.7f));
                     } else {
                         // Update countdown progress
-                        altarStateBossBar.setProgress(progress);
+                        altarStateBossBar.setProgress(Math.max(0.0, Math.min(1.0, progress)));
                     }
                     return; // Don't run dismantling logic yet
                 }
@@ -315,6 +380,13 @@ public class RiftManager {
                         breakingProgress = Math.min(1.0, breakingProgress + regenRatePerTick);
                     }
                 }
+
+                // [NEW] Save progress periodically
+                if (eggSpawned && System.currentTimeMillis() - lastSaveTime > 5000) { // 5초마다, 알이 생성된 후에만
+                    plugin.getEventDataManager().getConfig().set(CONFIG_PATH_BREAKING_PROGRESS, breakingProgress);
+                    plugin.getEventDataManager().saveConfig();
+                    lastSaveTime = System.currentTimeMillis();
+                }
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }
@@ -352,6 +424,7 @@ public class RiftManager {
     private void cleanupAltar() {
         cleanupBossBar();
         isEventActive = false;
+        this.breakingProgress = 1.0; // [FIX] 이벤트 정리 시 진행도를 초기화합니다.
 
         // 메모리에 있는 원본 블록 정보로 복구
         if (!originalBlocks.isEmpty()) {
@@ -359,11 +432,21 @@ public class RiftManager {
             originalBlocks.clear();
         }
 
+        // [NEW] 제단 청크의 강제 로드를 해제합니다.
+        if (altarLocation != null) {
+            altarLocation.getChunk().setForceLoaded(false);
+            plugin.getLogger().info("[차원의 균열] 제단 청크(" + altarLocation.getChunk().getX() + ", " + altarLocation.getChunk().getZ() + ")의 강제 로드를 해제합니다.");
+        }
+
+        // 모든 가문 창고의 동적 슬롯을 업데이트하여 나침반을 배리어로 되돌립니다.
+        plugin.getClanManager().updateAllPylonStoragesDynamicSlot();
+
         // 이벤트 상태를 event_data.yml에서 제거
         FileConfiguration eventConfig = plugin.getEventDataManager().getConfig();
         eventConfig.set(CONFIG_PATH_ACTIVE, false);
         eventConfig.set(CONFIG_PATH_LOCATION, null);
         eventConfig.set(CONFIG_PATH_START_TIME, null);
+        eventConfig.set(CONFIG_PATH_BREAKING_PROGRESS, null); // 저장된 진행도 제거
         // 제단 블록 데이터도 함께 제거합니다.
         eventConfig.set(CONFIG_PATH_ROOT + "altar-blocks", null);
         plugin.getEventDataManager().saveConfig();
@@ -381,6 +464,24 @@ public class RiftManager {
             altarStateBossBar.removeAll();
             altarStateBossBar.setVisible(false);
             altarStateBossBar = null;
+        }
+    }
+
+    /**
+     * 모든 가문의 파일런 창고에 균열의 위치를 가리키는 나침반을 배치합니다.
+     */
+    private void placeRiftCompassInStorages() {
+        if (altarLocation == null) {
+            plugin.getLogger().warning("[차원의 균열] 제단 위치가 설정되지 않아 나침반을 지급할 수 없습니다.");
+            return;
+        }
+
+        // 모든 가문 창고의 동적 슬롯을 업데이트하여 나침반을 배치합니다.
+        plugin.getClanManager().updateAllPylonStoragesDynamicSlot();
+
+        // 모든 가문에 나침반 지급을 알립니다.
+        for (Clan clan : plugin.getClanManager().getAllClans()) {
+            clan.broadcastMessage("§d[차원의 균열] §7가문창고에 의문의 나침반이 어딘가를 가리킵니다.");
         }
     }
 
@@ -462,13 +563,82 @@ public class RiftManager {
         eventConfig.set(altarBlocksPath, null);
 
         eventConfig.set(altarBlocksPath + ".world", altarLocation.getWorld().getName());
+
+        List<Map<String, Object>> blockList = new ArrayList<>();
         for (Map.Entry<Location, BlockData> entry : originalBlocks.entrySet()) {
             Location loc = entry.getKey();
-            // 키를 "x,y,z" 형태로 저장
-            String key = loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
-            eventConfig.set(altarBlocksPath + ".blocks." + key, entry.getValue().getAsString());
+            Map<String, Object> blockMap = new HashMap<>();
+            blockMap.put("x", loc.getBlockX());
+            blockMap.put("y", loc.getBlockY());
+            blockMap.put("z", loc.getBlockZ());
+            blockMap.put("data", entry.getValue().getAsString());
+            blockList.add(blockMap);
         }
-        // 저장은 triggerEvent에서 다른 상태와 함께 일괄적으로 처리됩니다.
+        eventConfig.set(altarBlocksPath + ".blocks", blockList);
+
+        // 변경된 데이터를 즉시 파일에 저장하여 데이터 유실을 방지합니다.
+        plugin.getEventDataManager().saveConfig();
+    }
+
+    private void loadAltarData() {
+        FileConfiguration eventConfig = plugin.getEventDataManager().getConfig();
+        String altarBlocksPath = CONFIG_PATH_ROOT + "altar-blocks";
+        if (!eventConfig.contains(altarBlocksPath)) {
+            plugin.getLogger().warning("[차원의 균열] 제단 블록 데이터가 없어 보호 기능을 재개할 수 없습니다. 이벤트가 비정상적으로 종료될 수 있습니다.");
+            return;
+        }
+
+        String worldName = eventConfig.getString(altarBlocksPath + ".world");
+
+        if (worldName == null) {
+            plugin.getLogger().severe("[차원의 균열] event_data.yml의 제단 월드 데이터가 손상되었습니다.");
+            return;
+        }
+
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            plugin.getLogger().severe("[차원의 균열] 제단 데이터를 로드할 수 없습니다: 월드 '" + worldName + "'를 찾을 수 없습니다!");
+            return;
+        }
+
+        originalBlocks.clear();
+        boolean needsResave = false;
+
+        // 새로운 List<Map> 형식인지 확인
+        if (eventConfig.get(altarBlocksPath + ".blocks") instanceof List) {
+            List<Map<?, ?>> blockList = eventConfig.getMapList(altarBlocksPath + ".blocks");
+            for (Map<?, ?> blockMap : blockList) {
+                try {
+                    int x = ((Number) blockMap.get("x")).intValue();
+                    int y = ((Number) blockMap.get("y")).intValue();
+                    int z = ((Number) blockMap.get("z")).intValue();
+                    String dataString = (String) blockMap.get("data");
+
+                    Location loc = new Location(world, x, y, z);
+                    BlockData data = Bukkit.createBlockData(dataString);
+                    originalBlocks.put(loc, data);
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "[차원의 균열] 제단 블록 데이터(새 형식) 파싱 오류: " + blockMap.toString(), e);
+                }
+            }
+        }
+        // 구 버전의 Map 형식인지 확인 (데이터 마이그레이션)
+        else if (eventConfig.isConfigurationSection(altarBlocksPath + ".blocks")) {
+            plugin.getLogger().warning("[차원의 균열] 구 버전의 제단 데이터를 발견했습니다. 새 형식으로 변환합니다...");
+            ConfigurationSection section = eventConfig.getConfigurationSection(altarBlocksPath + ".blocks");
+            parseOldMapFormat(section, world);
+            needsResave = true;
+        } else {
+            plugin.getLogger().severe("[차원의 균열] event_data.yml의 제단 블록 데이터 형식이 올바르지 않습니다.");
+            return;
+        }
+
+        if (needsResave) {
+            plugin.getLogger().info("[차원의 균열] " + originalBlocks.size() + "개의 블록 데이터를 새 형식으로 저장합니다.");
+            saveAltarData();
+        }
+
+        plugin.getLogger().info("[차원의 균열] " + originalBlocks.size() + "개의 제단 블록 데이터를 로드했습니다.");
     }
 
     private void cleanupAltarFromConfig() {
@@ -476,11 +646,10 @@ public class RiftManager {
         String altarBlocksPath = CONFIG_PATH_ROOT + "altar-blocks";
         if (!eventConfig.contains(altarBlocksPath)) return;
 
-        ConfigurationSection section = eventConfig.getConfigurationSection(altarBlocksPath + ".blocks");
         String worldName = eventConfig.getString(altarBlocksPath + ".world");
 
-        if (section == null || worldName == null) {
-            plugin.getLogger().severe("[차원의 균열] Altar data in event_data.yml is corrupted. Removing it.");
+        if (worldName == null) {
+            plugin.getLogger().severe("[차원의 균열] 정리할 제단 데이터가 손상되었습니다. 데이터를 제거합니다.");
             eventConfig.set(altarBlocksPath, null);
             plugin.getEventDataManager().saveConfig();
             return;
@@ -492,6 +661,64 @@ public class RiftManager {
             return;
         }
 
+        // [NEW] 정리 과정에서 청크 강제 로드도 해제합니다.
+        Map<Location, BlockData> blocksToRestore = new HashMap<>();
+
+        // 새로운 List<Map> 형식인지 확인
+        if (eventConfig.get(altarBlocksPath + ".blocks") instanceof List) {
+            List<Map<?, ?>> blockList = eventConfig.getMapList(altarBlocksPath + ".blocks");
+            for (Map<?, ?> blockMap : blockList) {
+                try {
+                    int x = ((Number) blockMap.get("x")).intValue();
+                    int y = ((Number) blockMap.get("y")).intValue();
+                    int z = ((Number) blockMap.get("z")).intValue();
+                    String dataString = (String) blockMap.get("data");
+                    Location loc = new Location(world, x, y, z);
+                    blocksToRestore.put(loc, Bukkit.createBlockData(dataString));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "[차원의 균열] 정리 중 블록 데이터(새 형식) 파싱 오류: " + blockMap.toString(), e);
+                }
+            }
+        }
+        // 구 버전의 Map 형식인지 확인
+        else if (eventConfig.isConfigurationSection(altarBlocksPath + ".blocks")) {
+            ConfigurationSection section = eventConfig.getConfigurationSection(altarBlocksPath + ".blocks");
+            for (String key : section.getKeys(false)) {
+                try {
+                    String[] parts = key.split(",");
+                    int x = Integer.parseInt(parts[0]);
+                    int y = Integer.parseInt(parts[1]);
+                    int z = Integer.parseInt(parts[2]);
+                    Location loc = new Location(world, x, y, z);
+                    blocksToRestore.put(loc, Bukkit.createBlockData(section.getString(key)));
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "[차원의 균열] 정리 중 블록 데이터(구 형식) 파싱 오류: " + key, e);
+                }
+            }
+        }
+
+        // 청크 강제 로드 해제
+        if (!blocksToRestore.isEmpty()) {
+            try {
+                Location firstLoc = blocksToRestore.keySet().iterator().next();
+                firstLoc.getChunk().setForceLoaded(false);
+                plugin.getLogger().info("[차원의 균열] 남은 데이터 정리 중 제단 청크(" + firstLoc.getChunk().getX() + ", " + firstLoc.getChunk().getZ() + ")의 강제 로드를 해제합니다.");
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "[차원의 균열] 남은 데이터 정리 중 청크 로드 해제에 실패했습니다.", e);
+            }
+        }
+
+        // 읽어온 데이터를 기반으로 지형을 복구합니다.
+        blocksToRestore.forEach((loc, data) -> loc.getBlock().setBlockData(data, false));
+
+        eventConfig.set(altarBlocksPath, null);
+        plugin.getEventDataManager().saveConfig();
+        plugin.getLogger().info("[차원의 균열] Leftover altar cleanup complete.");
+    }
+
+    private void parseOldMapFormat(ConfigurationSection section, World world) {
+        // The calling method loadAltarData already clears originalBlocks.
+        if (section == null) return;
         for (String key : section.getKeys(false)) {
             try {
                 String[] parts = key.split(",");
@@ -500,15 +727,11 @@ public class RiftManager {
                 int z = Integer.parseInt(parts[2]);
                 Location loc = new Location(world, x, y, z);
                 BlockData data = Bukkit.createBlockData(section.getString(key));
-                loc.getBlock().setBlockData(data, false);
+                originalBlocks.put(loc, data);
             } catch (Exception e) {
-                plugin.getLogger().severe("[차원의 균열] Error parsing block data for cleanup: " + key);
+                plugin.getLogger().log(Level.SEVERE, "[차원의 균열] 구 버전 맵 형식 파싱 오류: " + key, e);
             }
         }
-
-        eventConfig.set(altarBlocksPath, null);
-        plugin.getEventDataManager().saveConfig();
-        plugin.getLogger().info("[차원의 균열] Leftover altar cleanup complete.");
     }
 
     private Location getRandomSafeLocation(World world) {

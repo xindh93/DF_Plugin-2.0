@@ -81,7 +81,7 @@ public class GameStartManager {
                 }
             } else {
                 // 비리더 또는 클랜 없는 플레이어: 관전 모드로 전환 및 제한 적용
-                plugin.getSpectatorManager().setRestrictedSpectator(player);
+                plugin.getSpectatorManager().setSpectator(player);
                 player.sendMessage("§e[알림] §e게임이 시작되어 관전 모드로 전환됩니다.");
             }
         }

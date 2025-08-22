@@ -5,6 +5,7 @@ import cjs.DF_Plugin.data.ClanDataManager;
 import cjs.DF_Plugin.data.InventoryDataManager;
 import cjs.DF_Plugin.data.PlayerDataManager;
 import cjs.DF_Plugin.events.game.settings.GameModeManager;
+import cjs.DF_Plugin.player.death.PlayerDeathListener;
 import cjs.DF_Plugin.pylon.clan.ClanManager;
 import cjs.DF_Plugin.world.mob.BossMobListener;
 import cjs.DF_Plugin.world.nether.ClanNetherListener;
@@ -44,6 +45,7 @@ import cjs.DF_Plugin.upgrade.profile.passive.FishingRodPassiveListener;
 import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityListener;
 import cjs.DF_Plugin.upgrade.specialability.SpecialAbilityManager;
 import cjs.DF_Plugin.util.ActionBarManager;
+import cjs.DF_Plugin.util.ChatControlListener;
 import cjs.DF_Plugin.util.SpectatorManager;
 import cjs.DF_Plugin.world.nether.NetherManager;
 import cjs.DF_Plugin.world.*;
@@ -77,6 +79,7 @@ public final class DF_Main extends JavaPlugin {
     // --- Player Data & Interaction Managers ---
     private PlayerConnectionManager playerConnectionManager;
     private PlayerDeathManager playerDeathManager;
+    private PlayerRespawnListener playerRespawnListener;
     private StatsManager statsManager;
     private PlayerEvalGuiManager playerEvalGuiManager;
     private OfflinePlayerManager offlinePlayerManager;
@@ -135,9 +138,16 @@ public final class DF_Main extends JavaPlugin {
         clanDataManager = new ClanDataManager(this);
         inventoryDataManager = new InventoryDataManager(this);
 
+        // --- Event Managers ---
+        eventDataManager = new EventDataManager(this);
+        endEventManager = new EndEventManager(this);
+        gameStartManager = new GameStartManager(this);
+        riftManager = new RiftManager(this);
+
         // --- Player Data & Interaction Managers ---
         playerConnectionManager = new PlayerConnectionManager(this);
         playerDeathManager = new PlayerDeathManager(this);
+        playerRespawnListener = new PlayerRespawnListener(this);
         statsManager = new StatsManager(this);
         playerEvalGuiManager = new PlayerEvalGuiManager(this);
         offlinePlayerManager = new OfflinePlayerManager(this);
@@ -152,13 +162,6 @@ public final class DF_Main extends JavaPlugin {
         upgradeManager = new UpgradeManager(this);
         spectatorManager = new SpectatorManager(this);
         actionBarManager = new ActionBarManager(this, specialAbilityManager);
-        
-        // --- Event Managers ---
-        eventDataManager = new EventDataManager(this);
-        endEventManager = new EndEventManager(this);
-        gameStartManager = new GameStartManager(this);
-        riftManager = new RiftManager(this);
-
 
         // 모든 매니저가 초기화된 후, UpgradeManager의 프로필에 의존하는 특수 능력들을 등록합니다.
         specialAbilityManager.registerAbilities();
@@ -217,6 +220,8 @@ public final class DF_Main extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new SpecialItemListener(this), this);
         getServer().getPluginManager().registerEvents(this.statsManager, this);
         getServer().getPluginManager().registerEvents(playerDeathManager, this);
+        getServer().getPluginManager().registerEvents(new PlayerDeathListener(), this);
+        getServer().getPluginManager().registerEvents(new ChatControlListener(this), this);
     }
 
     private void registerUpgradeListeners() {
@@ -235,7 +240,8 @@ public final class DF_Main extends JavaPlugin {
     private void registerPylonListeners() {
         // 파일런, 가문, 리스폰, GUI, 아이템, 지옥, 관전, 정찰 관련
         getServer().getPluginManager().registerEvents(this.playerConnectionManager, this);
-        getServer().getPluginManager().registerEvents(new PlayerRespawnListener(this), this);
+        getServer().getPluginManager().registerEvents(this.playerRespawnListener, this);
+        getServer().getPluginManager().registerEvents(new PylonStorageListener(), this);
         getServer().getPluginManager().registerEvents(new PylonListener(this), this);
         getServer().getPluginManager().registerEvents(new BeaconGUIListener(this, this.pylonManager.getGuiManager()), this);
         getServer().getPluginManager().registerEvents(this.pylonManager.getGuiManager().getRecruitGuiManager(), this);
@@ -249,6 +255,8 @@ public final class DF_Main extends JavaPlugin {
         // 차원의 균열, 엔드 이벤트 등
         this.riftScheduler = new RiftScheduler(this);
         getServer().getPluginManager().registerEvents(this.riftScheduler, this);
+        // 스케줄러를 시작하여 쿨다운 및 이벤트 발생을 관리하도록 합니다.
+        this.riftScheduler.startScheduler();
         getServer().getPluginManager().registerEvents(new EndEventListener(this), this);
         getServer().getPluginManager().registerEvents(new RiftAltarInteractionListener(this), this);
     }
@@ -306,6 +314,7 @@ public final class DF_Main extends JavaPlugin {
     public PylonManager getPylonManager() { return pylonManager; }
     public PlayerConnectionManager getPlayerConnectionManager() { return playerConnectionManager; }
     public PlayerDeathManager getPlayerDeathManager() { return playerDeathManager; }
+    public PlayerRespawnListener getPlayerRespawnListener() { return playerRespawnListener; }
     public StatsManager getStatsManager() { return statsManager; }
     public PlayerEvalGuiManager getPlayerEvalGuiManager() { return playerEvalGuiManager; }
     public WorldManager getWorldManager() { return worldManager; }

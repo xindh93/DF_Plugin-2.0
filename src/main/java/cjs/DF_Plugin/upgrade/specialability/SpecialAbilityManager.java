@@ -226,19 +226,25 @@ public class SpecialAbilityManager {
      * @param player 확인할 플레이어
      */
     private void checkPlayerEquipment(Player player) {
-        // 1. 현재 장착된 모든 아이템(갑옷+손)에서 능력 목록을 가져옵니다.
+        // 1. 현재 장착된 아이템에서 능력 목록을 가져옵니다. (갑옷은 착용, 무기/도구는 손에 든 경우만)
         Map<String, ItemStack> currentAbilities = new HashMap<>();
-        List<ItemStack> itemsToCheck = new ArrayList<>(Arrays.asList(player.getInventory().getArmorContents()));
-        itemsToCheck.add(player.getInventory().getItemInMainHand());
-        itemsToCheck.add(player.getInventory().getItemInOffHand());
 
-        for (ItemStack item : itemsToCheck) {
-            if (item != null) {
-                // 10강 이상인 아이템의 능력만 활성화 대상으로 간주합니다.
-                if (plugin.getUpgradeManager().getUpgradeLevel(item) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL) {
-                    getAbilityFromItem(item).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), item));
-                }
+        // 갑옷 슬롯 확인
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (isItemReady(armor)) {
+                getAbilityFromItem(armor).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), armor));
             }
+        }
+
+        // 양손 확인 (갑옷류 아이템은 손에 들었을 때 능력이 활성화되지 않도록 방지)
+        ItemStack mainHandItem = player.getInventory().getItemInMainHand();
+        if (isItemReady(mainHandItem) && !isArmor(mainHandItem)) {
+            getAbilityFromItem(mainHandItem).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), mainHandItem));
+        }
+
+        ItemStack offHandItem = player.getInventory().getItemInOffHand();
+        if (isItemReady(offHandItem) && !isArmor(offHandItem)) {
+            getAbilityFromItem(offHandItem).ifPresent(ability -> currentAbilities.put(ability.getInternalName(), offHandItem));
         }
 
         // 2. 이전 상태와 비교하여 추가/제거된 능력을 확인합니다.
@@ -484,5 +490,15 @@ public class SpecialAbilityManager {
 
     public Collection<ISpecialAbility> getAllAbilities() {
         return registeredAbilities.values();
+    }
+
+    private boolean isItemReady(ItemStack item) {
+        return item != null && plugin.getUpgradeManager().getUpgradeLevel(item) >= cjs.DF_Plugin.upgrade.UpgradeManager.MAX_UPGRADE_LEVEL;
+    }
+
+    private boolean isArmor(ItemStack item) {
+        if (item == null) return false;
+        String typeName = item.getType().name();
+        return typeName.endsWith("_HELMET") || typeName.endsWith("_CHESTPLATE") || typeName.endsWith("_LEGGINGS") || typeName.endsWith("_BOOTS");
     }
 }

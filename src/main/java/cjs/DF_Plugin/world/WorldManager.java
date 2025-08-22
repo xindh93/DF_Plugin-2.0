@@ -171,9 +171,10 @@ public class WorldManager {
 
         // 1. 월드가 현재 로드되어 있다면, 플레이어를 대피시키고 언로드합니다.
         if (world != null) {
-            // 월드에 있는 모든 플레이어를 안전하게 이동시킵니다.
-            for (Player player : world.getPlayers()) {
-                teleportPlayerToSafety(player);
+            // 월드 내 플레이어 처리는 이 메서드를 호출하는 쪽의 책임입니다.
+            // 안전을 위해 플레이어가 남아있는지 확인하고 경고를 로깅합니다.
+            if (!world.getPlayers().isEmpty()) {
+                plugin.getLogger().warning("[월드 관리] 월드(" + worldName + ")를 초기화하기 전에 모든 플레이어가 이동되지 않았습니다! 이는 의도치 않은 동작일 수 있습니다.");
             }
 
             // 월드 언로드

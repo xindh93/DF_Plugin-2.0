@@ -212,10 +212,18 @@ public class SpecialAbilityListener implements Listener {
             return;
         }
 
-        // 플레이어가 착용한 모든 장비를 확인하여 능력을 찾습니다.
-        for (ItemStack armor : player.getInventory().getArmorContents()) {
-            getAbilityIfReady(armor).ifPresent(ability ->
-                ability.onPlayerToggleFlight(event, player, armor));
+        // 비행 관련 능력은 부츠에만 귀속되어야 합니다.
+        ItemStack boots = player.getInventory().getBoots();
+        Optional<ISpecialAbility> bootsAbility = getAbilityIfReady(boots);
+
+        if (bootsAbility.isPresent()) {
+            // 부츠에 능력이 있다면, 해당 능력에 이벤트를 전달합니다.
+            bootsAbility.get().onPlayerToggleFlight(event, player, boots);
+        } else {
+            // 부츠에 비행 관련 능력이 없다면, 서바이벌 모드에서 비행을 시도하는 것을 막습니다.
+            event.setCancelled(true);
+            player.setAllowFlight(false);
+            player.setFlying(false);
         }
     }
 

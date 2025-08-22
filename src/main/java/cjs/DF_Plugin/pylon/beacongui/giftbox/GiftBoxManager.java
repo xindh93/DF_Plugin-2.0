@@ -84,7 +84,6 @@ public class GiftBoxManager {
         @Override
         public void run() {
             plugin.getClanManager().refillAllGiftBoxes(System.currentTimeMillis());
-            Bukkit.broadcastMessage(PluginUtils.colorize("&d[선물상자] &f모든 가문의 선물상자가 보충되었습니다!"));
         }
     }
 }

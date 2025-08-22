@@ -108,6 +108,10 @@ public class EndEventManager {
             }
         }
 
+        // 월드 규칙을 다시 적용하여 새로 생성된 엔드 월드에도 config.yml 설정이 반영되도록 합니다.
+        plugin.getLogger().info("[엔드 이벤트] 엔드 월드에 게임 규칙을 적용합니다...");
+        plugin.getWorldManager().applyAllWorldSettings();
+
         if (openTask != null) {
             openTask.cancel();
             openTask = null;
@@ -247,7 +251,9 @@ public class EndEventManager {
 
         World endWorld = Bukkit.getWorld("world_the_end");
         if (endWorld != null) {
-            for (Player player : endWorld.getPlayers()) {
+            // 플레이어 목록을 복사하여 반복 중 텔레포트로 인한 리스트 변경 오류를 방지합니다.
+            for (Player player : new java.util.ArrayList<>(endWorld.getPlayers())) {
+                player.sendMessage("§5[엔드 이벤트] §c엔드 월드가 붕괴하여 안전한 장소로 귀환합니다.");
                 teleportPlayerToSafety(player);
             }
         }
