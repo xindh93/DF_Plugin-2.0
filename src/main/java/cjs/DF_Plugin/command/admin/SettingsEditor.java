@@ -93,7 +93,7 @@ public class SettingsEditor {
         sendInvertedBooleanSetting(player, "팬텀 생성", "world.rules.phantom-disabled");
         sendInvertedBooleanSetting(player, "좌표 막대 표시", "world.rules.locator-bar-disabled");
         sendBooleanSetting(player, "마법 황금사과 조합", "items.notched-apple-recipe");
-        sendTimeSettingInMinutes(player, "불사의 토템 쿨타임(분)", "world.rules.totem-cooldown-seconds", 1);
+        sendCooldownSettingInSeconds(player, "불사의 토템 쿨타임(분)", "upgrade.special-abilities.totem_of_undying.cooldown", 1);
         sendInvertedBooleanSetting(player, "엔더 상자 사용", "world.rules.enderchest-disabled");
         sendNumberSetting(player, "포션 소지 제한", "world.rules.potion-limit", 1);
         sendInvertedBooleanSetting(player, "전체 채팅 사용", "utility.chat-disabled");
@@ -173,6 +173,43 @@ public class SettingsEditor {
     }
 
     // --- UI 컴포넌트 생성 메소드 ---
+
+    /**
+     * 초 단위로 저장된 쿨다운 설정을 분 단위로 표시하고 조작하는 UI를 생성합니다.
+     * @param player 대상 플레이어
+     * @param name 설정 항목 이름
+     * @param key config.yml의 설정 키
+     * @param incrementInMinutes 증감 단위 (분)
+     */
+    private void sendCooldownSettingInSeconds(Player player, String name, String key, int incrementInMinutes) {
+        double valueInSeconds = configManager.getConfig().getDouble(key);
+        int valueInMinutes = (int) Math.round(valueInSeconds / 60.0);
+
+        TextComponent message = new TextComponent("§7- " + name + ": ");
+
+        TextComponent minusButton = new TextComponent("§c[-]");
+        int newMinusMinutes = Math.max(1, valueInMinutes - incrementInMinutes);
+        minusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + (newMinusMinutes * 60.0)));
+        minusButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§c-" + incrementInMinutes + "분 감소").create()));
+        message.addExtra(minusButton);
+
+        message.addExtra(" ");
+
+        TextComponent valueComponent = new TextComponent("§b[" + valueInMinutes + "]");
+        valueComponent.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/df admin set " + key + " " + valueInSeconds));
+        valueComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§e클릭하여 직접 초 단위로 값 입력").create()));
+        message.addExtra(valueComponent);
+
+        message.addExtra(" ");
+
+        TextComponent plusButton = new TextComponent("§a[+]");
+        int newPlusMinutes = valueInMinutes + incrementInMinutes;
+        plusButton.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/df admin set " + key + " " + (newPlusMinutes * 60.0)));
+        plusButton.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("§a+" + incrementInMinutes + "분 증가").create()));
+        message.addExtra(plusButton);
+
+        player.spigot().sendMessage(message);
+    }
 
     private void sendTimeSettingInMinutes(Player player, String name, String key, int incrementInMinutes) {
         int valueInMinutes = configManager.getConfig().getInt(key);

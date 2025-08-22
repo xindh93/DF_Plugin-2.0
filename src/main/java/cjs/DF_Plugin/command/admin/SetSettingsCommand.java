@@ -94,7 +94,7 @@ public class SetSettingsCommand {
             settingsEditor.openPylonSettings(player);
         } else if (key.startsWith("world.border.")) {
             settingsEditor.openWorldBorderSettings(player);
-        } else if (key.startsWith("world.rules.") || key.startsWith("events.") || key.equals("items.notched-apple-recipe") || key.startsWith("utility.")) {
+        } else if (key.startsWith("world.rules.") || key.startsWith("events.") || key.equals("items.notched-apple-recipe") || key.startsWith("utility.") || key.equals("upgrade.special-abilities.totem_of_undying.cooldown")) {
             settingsEditor.openUtilitySettings(player);
         } else if (key.startsWith("items.op-enchant.")) {
             settingsEditor.openOpEnchantSettings(player);
