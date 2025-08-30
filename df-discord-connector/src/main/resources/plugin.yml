@@ -1,0 +1,5 @@
+name: DFDiscordConnectorPlugin
+main: df.discord.DFDiscordConnectorPlugin
+version: 1.0
+depend: [DFBridgePlugin]
+api-version: '1.21'

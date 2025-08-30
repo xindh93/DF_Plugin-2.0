@@ -1,0 +1,4 @@
+name: DFBridgePlugin
+main: df.bridge.DFBridgePlugin
+version: 1.0
+api-version: '1.21'
