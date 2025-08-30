@@ -9,6 +9,7 @@ import cjs.DF_Plugin.player.stats.StatType;
 import cjs.DF_Plugin.player.stats.StatsManager;
 import cjs.DF_Plugin.pylon.beacongui.BeaconGUIManager;
 import cjs.DF_Plugin.util.PluginUtils;
+import cjs.DF_Plugin.EmitHelper;
 import org.bukkit.*;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Sound;
@@ -417,6 +418,7 @@ public class RecruitGuiManager implements Listener {
 
         spawnRecruitmentFireworks(recruiter);
         recruiter.sendMessage(PREFIX + "§a" + recruitedPlayer.getName() + "님을 새로운 가문원으로 영입했습니다!");
+        EmitHelper.clanMemberJoined(clan.getName(), recruitedPlayer.getName() != null ? recruitedPlayer.getName() : recruitedPlayer.getUniqueId().toString());
 
         if (recruitedPlayer.isOnline()) {
             Player onlineTarget = recruitedPlayer.getPlayer();

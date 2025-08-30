@@ -3,6 +3,7 @@ package cjs.DF_Plugin.events.rift;
 import cjs.DF_Plugin.DF_Main;
 import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.upgrade.UpgradeManager;
+import cjs.DF_Plugin.EmitHelper;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -145,7 +146,8 @@ public class RiftManager {
             saveAltarData(); // 제단 블록 구조 저장
 
             Bukkit.broadcastMessage("§d[차원의 균열] §f차원의 어딘가가 불안정합니다.");
-
+            EmitHelper.riftUnstable();
+            
             // 모든 가문 창고에 균열 위치를 가리키는 나침반을 배치합니다.
             placeRiftCompassInStorages();
 
@@ -321,6 +323,7 @@ public class RiftManager {
                         altarStateBossBar.setTitle("§c이계의 알이 도착했습니다");
                         altarStateBossBar.setColor(BarColor.RED);
                         Bukkit.broadcastMessage("§d[차원의 균열] §f균열에서 강력한 기운이 감지됩니다!");
+                        EmitHelper.riftStrongEnergy();
                         Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.7f));
                     } else {
                         // Update countdown progress
@@ -398,6 +401,7 @@ public class RiftManager {
         cleanupBossBar();
 
         Bukkit.broadcastMessage("§d[차원의 균열] §f차원의 균열이 닫힙니다.");
+        EmitHelper.riftClosed();
         Bukkit.getOnlinePlayers().forEach(p -> p.playSound(p.getLocation(), Sound.ENTITY_WITHER_DEATH, 1.0f, 0.6f));
 
         // 신호기만 파괴

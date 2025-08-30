@@ -10,6 +10,7 @@ import cjs.DF_Plugin.upgrade.item.UpgradeItems;
 import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.util.PlayerTagManager;
 import cjs.DF_Plugin.util.PluginUtils;
+import cjs.DF_Plugin.EmitHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -199,6 +200,7 @@ public class ClanManager {
     public void absorbClan(Clan attacker, Clan defender) {
         // Notify defender's members about absorption
         defender.broadcastMessage(PluginUtils.colorize("&c[전쟁] &f가문이 멸망하여 " + attacker.getFormattedName() + " §f가문에 흡수되었습니다."));
+        EmitHelper.clanAbsorbed(defender.getName(), attacker.getName());
 
         // Announce to the entire server
         String publicMessage = PluginUtils.colorize("&4[전쟁] " + defender.getFormattedName() + " §c가문이 마지막 파일런을 잃고 " + attacker.getFormattedName() + " §c가문에게 흡수되었습니다!");
@@ -597,6 +599,7 @@ public class ClanManager {
                 clan.broadcastMessage(PluginUtils.colorize("&c[선물상자] &f선물상자가 가득 차서 일부 또는 모든 선물을 받지 못했습니다!"));
             } else {
                 clan.broadcastMessage(PluginUtils.colorize("&d[선물상자] &f가문의 선물상자에 새로운 선물이 도착했습니다!"));
+                EmitHelper.giftboxArrived(clan.getName());
             }
         }
 

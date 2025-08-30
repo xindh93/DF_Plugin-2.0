@@ -5,6 +5,7 @@ import cjs.DF_Plugin.pylon.clan.Clan;
 import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.events.game.settings.GameConfigManager;
 import cjs.DF_Plugin.util.PluginUtils;
+import cjs.DF_Plugin.EmitHelper;
 import org.bukkit.Particle;
 import org.bukkit.Material;
 import org.bukkit.Location;
@@ -194,6 +195,7 @@ public class PylonAreaManager {
                         if (!previouslyKnownIntruders.contains(player.getUniqueId())) {
                             String warningMessage = PluginUtils.colorize("&c[경고] &f외부인이 파일런 영역에 접근했습니다!");
                             clan.broadcastMessage(warningMessage);
+                            EmitHelper.clanIntrusion(clan.getName(), plugin.getClanManager().getClanByPlayer(player.getUniqueId()) != null ? plugin.getClanManager().getClanByPlayer(player.getUniqueId()).getName() : null);
                         }
                     }
                 }

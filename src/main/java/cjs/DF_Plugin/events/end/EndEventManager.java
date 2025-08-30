@@ -17,6 +17,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import cjs.DF_Plugin.EmitHelper;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -124,6 +125,7 @@ public class EndEventManager {
 
         if (broadcast) {
             Bukkit.broadcastMessage("§5[엔드 이벤트] §d엔더 드래곤의 포효가 들려옵니다! 엔드 포탈이 활성화되었습니다!");
+            EmitHelper.endPortalOpened();
             // 모든 플레이어에게 엔드 포탈 활성화 소리를 재생합니다.
             for (Player player : Bukkit.getOnlinePlayers()) {
                 player.playSound(player.getLocation(), Sound.BLOCK_END_PORTAL_SPAWN, 1.0f, 1.0f);
@@ -149,6 +151,7 @@ public class EndEventManager {
 
         if (broadcast) {
             Bukkit.broadcastMessage("§5[엔드 이벤트] §d공허의 기운이 꿈틀거립니다... " + minutes + "분 뒤 엔드 포탈이 열립니다!");
+            EmitHelper.endPortalCountdown(minutes);
         }
 
         openTask = Bukkit.getScheduler().runTaskLater(plugin, () -> openEnd(true), minutes * 60 * 20L);
@@ -177,6 +180,7 @@ public class EndEventManager {
         // 드래곤이 죽으면 붕괴 상태로 전환됩니다. isEndOpen은 false가 되어 더 이상 진입할 수 없습니다.
         this.currentState = State.COLLAPSING;
         Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔더 드래곤이 쓰러져 엔드 포탈이 닫혔습니다!");
+        EmitHelper.enderDragonDefeated();
 
         World endWorld = Bukkit.getWorld("world_the_end");
         if (endWorld != null) {
@@ -188,6 +192,7 @@ public class EndEventManager {
 
         long delayMinutes = plugin.getGameConfigManager().getConfig().getLong("end-event.collapse-delay-minutes", 10);
         Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔드 월드가 " + delayMinutes + "분 뒤 붕괴를 시작합니다! 서둘러 탈출하세요!");
+        EmitHelper.endWorldCollapseSoon(delayMinutes);
 
         this.collapseFinishTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
         saveState();
