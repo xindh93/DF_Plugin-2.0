@@ -20,6 +20,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
+import cjs.DF_Plugin.EmitHelper;
 
 public class UpgradeManager {
 
@@ -146,6 +147,7 @@ public class UpgradeManager {
                     .append(Component.text(" 아이템이 강화에 실패하여 파괴되었습니다.", NamedTextColor.GRAY))
                     .build();
             Bukkit.broadcast(broadcastMessage);
+            EmitHelper.upgradeDestroyed(currentLevel, destroyedItem.getType().name());
             item.setAmount(0);
             player.getWorld().playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.0f);
             player.getWorld().spawnParticle(Particle.LARGE_SMOKE, player.getLocation().add(0, 1, 0), 40, 0.5, 0.5, 0.5, 0.05);
@@ -408,6 +410,7 @@ public class UpgradeManager {
         if (meta == null || !meta.hasDisplayName()) return;
 
         String legendaryName = meta.getDisplayName();
+        String cleanLegendaryName = ChatColor.stripColor(legendaryName);
         
         // Adventure API를 사용하여 호버 가능한 메시지 생성
         Component hoverableItemName = LegacyComponentSerializer.legacySection().deserialize(legendaryName)
@@ -424,6 +427,7 @@ public class UpgradeManager {
             p.sendMessage(broadcastMessage);
             p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f);
         }
+        EmitHelper.upgradeLv10Born(cleanLegendaryName);
     }
 
     private boolean hasEnoughStones(Player player, int amount) {

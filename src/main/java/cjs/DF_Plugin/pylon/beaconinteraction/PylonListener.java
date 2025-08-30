@@ -6,6 +6,7 @@ import cjs.DF_Plugin.pylon.clan.ClanManager;
 import cjs.DF_Plugin.util.item.PylonItemFactory;
 import cjs.DF_Plugin.pylon.PylonType;
 import cjs.DF_Plugin.util.PluginUtils;
+import cjs.DF_Plugin.EmitHelper;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -189,6 +190,7 @@ public class PylonListener implements Listener {
             clanManager.saveClanData(victimClan);
             attackerClan.broadcastMessage("§a" + victimClan.getFormattedName() + "§a 가문의 보조 파일런을 파괴했습니다!");
             victimClan.broadcastMessage("§c" + attackerClan.getFormattedName() + "§c 가문에 의해 보조 파일런이 파괴되었습니다!");
+            EmitHelper.pylonDestroyed(victimClan.getName(), attackerClan != null ? attackerClan.getName() : null);
 
             new org.bukkit.scheduler.BukkitRunnable() {
                 @Override
