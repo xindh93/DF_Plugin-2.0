@@ -25,5 +25,5 @@ dependencies {
 // 빌드된 jar 파일의 이름과 위치를 지정합니다.
 tasks.jar {
     archiveFileName = 'DF_Plugin-2.0.jar'
-    destinationDirectory = file('C:\\Users\\CJS\\Documents\\ServerEngine\\servers\\server_818280382\\plugins')
+    destinationDirectory = file('C:\\Users\\a0104\\Documents\\ServerEngine\\servers\\server_890160838\\plugins')
 }

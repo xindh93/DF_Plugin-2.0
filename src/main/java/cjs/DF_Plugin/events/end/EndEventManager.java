@@ -151,7 +151,7 @@ public class EndEventManager {
 
         if (broadcast) {
             Bukkit.broadcastMessage("§5[엔드 이벤트] §d공허의 기운이 꿈틀거립니다... " + minutes + "분 뒤 엔드 포탈이 열립니다!");
-            EmitHelper.endPortalCountdown(minutes);
+            EmitHelper.endPortalCountdown((int) minutes);
         }
 
         openTask = Bukkit.getScheduler().runTaskLater(plugin, () -> openEnd(true), minutes * 60 * 20L);
@@ -192,7 +192,7 @@ public class EndEventManager {
 
         long delayMinutes = plugin.getGameConfigManager().getConfig().getLong("end-event.collapse-delay-minutes", 10);
         Bukkit.broadcastMessage("§5[엔드 이벤트] §c엔드 월드가 " + delayMinutes + "분 뒤 붕괴를 시작합니다! 서둘러 탈출하세요!");
-        EmitHelper.endWorldCollapseSoon(delayMinutes);
+        EmitHelper.endWorldCollapseSoon((int) delayMinutes);
 
         this.collapseFinishTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
         saveState();
