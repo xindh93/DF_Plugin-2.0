@@ -8,3 +8,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'DF_Plugin-2.0'
+include 'df-bridge', 'df-discord-connector'

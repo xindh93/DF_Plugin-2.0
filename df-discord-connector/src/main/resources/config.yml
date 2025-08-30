@@ -1,0 +1,20 @@
+# Discord webhook URL to send messages to
+webhook-url: "https://example.com/webhook"
+
+# Mention mapping per DFNotifyEvent.Type. Use '' for none.
+mentions:
+  default: ''
+  CLAN_INTRUSION: ''
+  PYLON_DESTROYED: ''
+  CLAN_ABSORBED: '@everyone'
+  CLAN_MEMBER_JOINED: ''
+  RIFT_UNSTABLE: '@everyone'
+  RIFT_STRONG_ENERGY: '@everyone'
+  RIFT_CLOSED: '@everyone'
+  END_PORTAL_COUNTDOWN: '@everyone'
+  END_PORTAL_OPENED: '@everyone'
+  ENDER_DRAGON_DEFEATED: '@everyone'
+  END_WORLD_COLLAPSE_SOON: '@everyone'
+  UPGRADE_DESTROYED: '@everyone'
+  UPGRADE_LV10_BORN: '@everyone'
+  GIFTBOX_ARRIVED: ''
